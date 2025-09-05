@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module lfsr_tb_sequence;
     logic clk;
     logic reset;
@@ -9,9 +7,10 @@ module lfsr_tb_sequence;
     logic [6:0] lfsr_out;
     
     integer error_count = 0;
-    integer i;
+    integer i, j;
     logic [6:0] sequence_buffer [0:127];
     logic [6:0] expected_values [0:10];
+    logic [6:0] seen_values [0:126];
     
     // Instantiate DUT
     lfsr dut (
@@ -129,7 +128,6 @@ module lfsr_tb_sequence;
         enable = 1;
         
         // Track that we get unique values (maximal length sequence)
-        logic [6:0] seen_values [0:126];
         seen_values[0] = 7'b0000001;
         
         for (i = 1; i < 127; i++) begin
@@ -137,7 +135,7 @@ module lfsr_tb_sequence;
             seen_values[i] = lfsr_out;
             
             // Check this value hasn't been seen before
-            for (integer j = 0; j < i; j++) begin
+            for (j = 0; j < i; j++) begin
                 if (seen_values[j] == lfsr_out && lfsr_out !== 7'b0000000) begin
                     $display("ERROR: Duplicate value %b seen at positions %0d and %0d (should be 127-cycle)", lfsr_out, j, i);
                     error_count++;

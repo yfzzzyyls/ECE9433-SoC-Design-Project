@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module lfsr_tb_edge;
     logic clk;
     logic reset;
@@ -11,6 +9,10 @@ module lfsr_tb_edge;
     integer error_count = 0;
     integer i, j;
     logic [6:0] prev_value;
+    logic [6:0] single_bit_seeds [7];
+    logic [6:0] first_repeat_value;
+    logic [6:0] seen_values [0:126];
+    integer repeat_count;
     
     // Instantiate DUT
     lfsr dut (
@@ -69,7 +71,6 @@ module lfsr_tb_edge;
         enable = 0;
         
         // Test 2: All single-bit patterns
-        logic [6:0] single_bit_seeds [7];
         single_bit_seeds[0] = 7'b0000001;
         single_bit_seeds[1] = 7'b0000010;
         single_bit_seeds[2] = 7'b0000100;
@@ -181,9 +182,8 @@ module lfsr_tb_edge;
         enable = 1;
         
         // Run for 300 cycles (more than 2 complete sequences)
-        logic [6:0] first_repeat_value;
         first_repeat_value = lfsr_out;
-        integer repeat_count = 0;
+        repeat_count = 0;
         
         for (i = 1; i <= 300; i++) begin
             @(posedge clk);

@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module lfsr_tb_basic;
     logic clk;
     logic reset;
