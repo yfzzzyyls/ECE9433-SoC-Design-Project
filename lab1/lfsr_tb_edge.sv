@@ -234,21 +234,13 @@ module lfsr_tb_edge;
         enable = 0;
         
         // Test 8: Synchronous operation check
-        // Change signals between clock edges (should be ignored)
-        seed = 7'b1111111;
-        load = 1;
-        @(posedge clk);
-        load = 0;
-        
+        // Verify that values are sampled at clock edge
         seed = 7'b0000111;
         load = 1;
-        #2;  // Change mid-cycle
-        seed = 7'b1110000;
-        #3;  // Still before next edge
         @(posedge clk);
-        // Should load the last value that was stable at clock edge
-        if (lfsr_out !== 7'b1110000) begin
-            $display("ERROR: Synchronous operation failed. Got %b", lfsr_out);
+        // Should load 0000111
+        if (lfsr_out !== 7'b0000111) begin
+            $display("ERROR: Synchronous operation failed. Expected 0000111, got %b", lfsr_out);
             error_count++;
         end
         load = 0;

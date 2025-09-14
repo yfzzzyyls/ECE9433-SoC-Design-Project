@@ -70,17 +70,16 @@ module lfsr_tb_sequence;
         end
         
         // Continue and verify 127-cycle periodicity
-        // Store entire sequence
-        sequence_buffer[0] = 7'b1100111;  // Initial value
-        for (i = 1; i < 127; i++) begin
+        // We already did 4 shifts, continue for remaining shifts
+        // Total of 127 shifts should bring us back to initial seed
+        for (i = 5; i <= 126; i++) begin
             @(posedge clk);
-            sequence_buffer[i] = lfsr_out;
         end
         
-        // After 127 total values (0-126), should return to initial
+        // After 127 shifts from initial, should return to initial seed
         @(posedge clk);
         if (lfsr_out !== 7'b1100111) begin
-            $display("ERROR: Sequence did not repeat after 127 cycles. Expected 7'b1100111, got %b", lfsr_out);
+            $display("ERROR: Sequence did not repeat after 127 shifts. Expected 7'b1100111, got %b", lfsr_out);
             error_count++;
         end
         enable = 0;
