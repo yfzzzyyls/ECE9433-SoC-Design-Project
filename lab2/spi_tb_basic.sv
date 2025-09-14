@@ -74,6 +74,12 @@ module spi_tb (
         end
     endtask
 
+    // Debug monitoring
+    always @(posedge sclk) begin
+        if (w_en) $display("DEBUG: WRITE @%0t  addr=%h data=%h", $time, addr, data_o);
+        if (r_en) $display("DEBUG: READ  @%0t  addr=%h data_i=%h", $time, addr, data_i);
+    end
+
     // Main test sequence
     initial begin
         // Initialize signals
