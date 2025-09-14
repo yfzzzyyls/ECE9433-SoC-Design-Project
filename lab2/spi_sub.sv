@@ -16,7 +16,8 @@ module spi_sub (
     // Internal registers
     logic [43:0] rx_shift_reg;     // Receive shift register
     logic [43:0] tx_shift_reg;     // Transmit shift register
-    logic [5:0]  bit_counter;      // Counts 0-43 for receive, 0-43 for transmit
+    logic [5:0]  bit_counter;      // Counts 0-43 for receive
+    logic [5:0]  tx_bit_counter;   // Separate counter for transmit
     logic [43:0] message_buffer;   // Store complete received message
 
     // State machine - 4 states for proper timing
@@ -87,7 +88,7 @@ module spi_sub (
             end
 
             TRANSMIT: begin
-                if (bit_counter == 6'd43)
+                if (tx_bit_counter == 6'd43)
                     next_state = IDLE;
             end
 
@@ -100,6 +101,7 @@ module spi_sub (
         if (cs_n) begin
             rx_shift_reg <= 44'b0;
             bit_counter <= 6'b0;
+            tx_bit_counter <= 6'b0;
             message_buffer <= 44'b0;
         end else begin
             if (state == RECEIVE) begin
@@ -112,15 +114,18 @@ module spi_sub (
                     message_buffer <= {rx_shift_reg[42:0], mosi};
                 end
             end else if (state == MEMORY) begin
-                // Reset counter for transmit phase
-                bit_counter <= 6'b0;
+                // Initialize tx counter for transmit phase
+                tx_bit_counter <= 6'b0;
             end else if (state == TRANSMIT) begin
-                bit_counter <= bit_counter + 1'b1;
+                // Increment tx counter after each bit sent
+                if (tx_bit_counter < 6'd43) begin
+                    tx_bit_counter <= tx_bit_counter + 1'b1;
+                end
             end
         end
     end
 
-    // Prepare transmit data
+    // Prepare transmit data - only on posedge
     always_ff @(posedge sclk) begin
         if (cs_n) begin
             tx_shift_reg <= 44'b0;
@@ -134,18 +139,18 @@ module spi_sub (
                 tx_shift_reg <= message_buffer;
             end
         end
+        // Note: tx_shift_reg doesn't shift - we use bit_counter to index
     end
 
-    // Transmit logic - update on negedge
+    // Transmit output logic - update miso on negedge
     always_ff @(negedge sclk) begin
         if (cs_n) begin
             miso <= 1'b0;
         end else begin
             if (state == TRANSMIT) begin
-                // Transmit MSB first
-                miso <= tx_shift_reg[43];
-                // Shift left for next bit
-                tx_shift_reg <= {tx_shift_reg[42:0], 1'b0};
+                // Transmit MSB first using tx_bit_counter to index
+                // tx_bit_counter goes 0->43, we want to send bits 43->0
+                miso <= tx_shift_reg[43 - tx_bit_counter];
             end else begin
                 miso <= 1'b0;
             end

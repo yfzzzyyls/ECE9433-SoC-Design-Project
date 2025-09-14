@@ -7,7 +7,7 @@ module spi_tb (
     input  logic [31:0] data_i
 );
 
-    // Internal SPI signals
+    // Internal SPI signals for Main-to-Sub communication
     logic cs_n;
     logic mosi;
     logic miso;
@@ -20,17 +20,18 @@ module spi_tb (
     logic [31:0] test_data;
     logic [9:0] test_addr;
 
-    // Instantiate DUT
+    // Instantiate SPI Sub module (DUT)
+    // Memory signals are passed through as outputs of this testbench
     spi_sub dut (
         .sclk(sclk),
         .cs_n(cs_n),
         .mosi(mosi),
         .miso(miso),
-        .r_en(r_en),
-        .w_en(w_en),
-        .addr(addr),
-        .data_o(data_o),
-        .data_i(data_i)
+        .r_en(r_en),      // Pass through to testbench output
+        .w_en(w_en),      // Pass through to testbench output
+        .addr(addr),      // Pass through to testbench output
+        .data_o(data_o),  // Pass through to testbench output
+        .data_i(data_i)   // Pass through from testbench input
     );
 
     // Clock generation
