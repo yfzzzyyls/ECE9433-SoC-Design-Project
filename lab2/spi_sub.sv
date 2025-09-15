@@ -34,14 +34,17 @@ module spi_sub (
   // Continuous assignments
   assign addr = addr_reg;
   assign data_o = data_reg;
+  // Memory enables must be combinational for one-cycle access
+  assign r_en = (state == MEMORY) && (op_code == 2'b00);
+  assign w_en = (state == MEMORY) && (op_code == 2'b01);
 
   // Combinational TX data selection
   always_comb begin
-    if (op_code == 2'b00 && (state == MEMORY || state == TRANSMIT)) begin
-      // For reads, use current data_i from RAM
+    if (op_code == 2'b00 && state == MEMORY) begin
+      // For reads during MEMORY state, use current data_i from RAM
       tx_data = {op_code, addr_reg, data_i};
     end else begin
-      // For writes, use registered value
+      // For writes and during TRANSMIT state, use registered value
       tx_data = tx_data_write;
     end
   end
@@ -84,12 +87,7 @@ module spi_sub (
       addr_reg <= '0;
       data_reg <= '0;
       tx_data_write <= '0;
-      r_en <= 1'b0;
-      w_en <= 1'b0;
     end else begin
-      // Default values
-      r_en <= 1'b0;
-      w_en <= 1'b0;
 
       case (state)
         IDLE: begin
@@ -120,12 +118,13 @@ module spi_sub (
         end
 
         MEMORY: begin
-          // Memory access and TX data preparation
+          // Memory access for ONE CYCLE as per spec
+          // r_en and w_en are now combinational (see assign statements)
           if (op_code == 2'b00) begin
-            r_en <= 1'b1;
-            // For reads, tx_data is handled combinationally
+            // For reads, capture data_i into tx_data_write
+            tx_data_write <= {op_code, addr_reg, data_i};
+            //$display("DEBUG MEMORY READ: time=%0t, data_i=%h, capturing to tx_data_write", $time, data_i);
           end else if (op_code == 2'b01) begin
-            w_en <= 1'b1;
             // For writes, register the echo data
             tx_data_write <= {op_code, addr_reg, data_reg};
           end
@@ -134,10 +133,7 @@ module spi_sub (
 
         TRANSMIT: begin
           // Continue transmission (first bit was output in MEMORY state)
-          if (op_code == 2'b00) begin
-            // For reads, keep r_en high to maintain data_i from combinational RAM
-            r_en <= 1'b1;
-          end
+          // NO memory enables during transmit - spec says ONE cycle only
           if (bit_count < 6'd44) begin
             bit_count <= bit_count + 6'd1;
           end
