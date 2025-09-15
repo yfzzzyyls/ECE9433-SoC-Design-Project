@@ -33,11 +33,13 @@ module spi_tb (
     .data_i(data_i)
   );
 
-  // Clock generation
+  // Clock generation using assign statement for output port
+  logic clk_internal;
   initial begin
-    sclk = 0;
-    forever #5 sclk = ~sclk;  // 100 MHz clock
+    clk_internal = 0;
+    forever #5 clk_internal = ~clk_internal;  // 100 MHz clock
   end
+  assign sclk = clk_internal;
 
   // Task to send 44 bits MSB first
   task send_spi_message(input [43:0] message);
