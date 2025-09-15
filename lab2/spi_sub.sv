@@ -1,8 +1,12 @@
+`timescale 1ns/1ps
+
 module spi_sub (
   input  logic        sclk,
-  input  logic        cs_n,
+  input  logic        cs_n,     // active-low chip select (synchronous reset when high)
   input  logic        mosi,
   output logic        miso,
+
+  // Memory interface
   output logic        r_en,
   output logic        w_en,
   output logic [9:0]  addr,
@@ -10,141 +14,166 @@ module spi_sub (
   input  logic [31:0] data_i
 );
 
-  typedef enum logic [1:0] { IDLE=2'b00, RECEIVE=2'b01, MEMORY=2'b10, TRANSMIT=2'b11 } state_t;
+  // State machine
+  typedef enum logic [1:0] {
+    IDLE     = 2'b00,
+    RECEIVE  = 2'b01,
+    MEMORY   = 2'b10,
+    TRANSMIT = 2'b11
+  } state_t;
+
   state_t state, next_state;
 
-  // -------------------- RX (main -> sub) --------------------
-  logic [43:0] rx_shift;     // accumulates incoming bits, MSB-first
-  logic [5:0]  rx_cnt;       // 0..43
-  logic        rx_done;      // strobes when 44th bit captured this posedge
+  // RX signals
+  logic [43:0] rx_shift_reg;
+  logic [5:0]  rx_bit_count;
+  logic        rx_complete;
 
-  // -------------------- Latched message fields --------------------
-  logic [43:0] msg;          // final 44b message (op[43:42], addr[41:32], data[31:0])
-  logic [1:0]  op_reg;
-  logic [9:0]  addr_reg;
-  logic [31:0] data_reg;
+  // Message storage
+  logic [43:0] message;
+  logic [1:0]  op_code;
+  logic [9:0]  addr_internal;
+  logic [31:0] data_internal;
 
-  assign addr   = addr_reg;  // tb_top wires lower bits as needed
-  assign data_o = data_reg;
+  // TX signals
+  logic [43:0] tx_shift_reg;
+  logic [5:0]  tx_bit_count;
+  logic        tx_armed;      // Flag to start TX on next negedge
 
-  // -------------------- One-cycle memory access pulse --------------------
-  logic mem_pulse;           // 1 exactly on the posedge AFTER 44th bit is sampled
-  logic r_en_q, w_en_q;
-  assign r_en = r_en_q;
-  assign w_en = w_en_q;
+  // Memory control
+  logic mem_access_en;
 
-  // -------------------- TX (sub -> main) --------------------
-  logic [43:0] tx_shift;     // what we will send back
-  logic [5:0]  tx_cnt;       // 0..43
-  logic        tx_arm;       // true during the half-cycle between memory posedge and next posedge
+  // Continuous assignments
+  assign addr = addr_internal;
+  assign data_o = data_internal;
 
-  // ---------- State register ----------
+  // State machine - sequential
   always_ff @(posedge sclk) begin
-    if (cs_n) state <= IDLE;
-    else      state <= next_state;
+    if (cs_n) begin
+      state <= IDLE;
+    end else begin
+      state <= next_state;
+    end
   end
 
-  // ---------- Next-state logic ----------
+  // State machine - combinational
   always_comb begin
     next_state = state;
-    unique case (state)
-      IDLE:     if (!cs_n)      next_state = RECEIVE;
-      RECEIVE:  if (rx_done)    next_state = MEMORY;     // finished 44-bit receive
-      MEMORY:                   next_state = TRANSMIT;   // one cycle access
-      TRANSMIT: if (tx_cnt==43) next_state = IDLE;
-      default:                  next_state = IDLE;
+    case (state)
+      IDLE: begin
+        if (!cs_n) next_state = RECEIVE;
+      end
+
+      RECEIVE: begin
+        if (rx_complete) next_state = MEMORY;
+      end
+
+      MEMORY: begin
+        next_state = TRANSMIT;
+      end
+
+      TRANSMIT: begin
+        if (tx_bit_count == 6'd43) next_state = IDLE;
+      end
+
+      default: next_state = IDLE;
     endcase
   end
 
-  // ---------- Receive 44 bits (sample on posedge, MSB first) ----------
+  // RX logic - sample on posedge
   always_ff @(posedge sclk) begin
     if (cs_n) begin
-      rx_shift  <= '0;
-      rx_cnt    <= '0;
-      rx_done   <= 1'b0;
-      msg       <= '0;
-      op_reg    <= 2'b00;
-      addr_reg  <= '0;
-      data_reg  <= '0;
-      mem_pulse <= 1'b0;
+      rx_shift_reg <= '0;
+      rx_bit_count <= '0;
+      rx_complete <= 1'b0;
+      message <= '0;
+      op_code <= '0;
+      addr_internal <= '0;
+      data_internal <= '0;
     end else begin
-      // Default values
-      rx_done <= 1'b0;
+      rx_complete <= 1'b0;
 
-      if (state == RECEIVE) begin
-        // shift in current bit (MSB first)
-        rx_shift <= {rx_shift[42:0], mosi};
+      if (next_state == RECEIVE || state == RECEIVE) begin
+        // Shift in new bit (MSB first)
+        // Sample when entering or in RECEIVE state
+        rx_shift_reg <= {rx_shift_reg[42:0], mosi};
 
-        if (rx_cnt < 6'd43) begin
-          rx_cnt <= rx_cnt + 1'b1;
+        if (rx_bit_count == 6'd43) begin
+          // Complete 44-bit message received
+          logic [43:0] complete_msg;
+          complete_msg = {rx_shift_reg[42:0], mosi};
+
+          rx_complete <= 1'b1;
+          message <= complete_msg;
+          op_code <= complete_msg[43:42];      // Extract from complete message
+          addr_internal <= complete_msg[41:32]; // Extract from complete message
+          data_internal <= complete_msg[31:0];  // Extract from complete message
+          rx_bit_count <= '0;
         end else begin
-          // This is the 44th bit; assemble the *complete* message using previous 43 + current bit.
-          logic [43:0] full_msg = {rx_shift[42:0], mosi};
-          msg       <= full_msg;
-          op_reg    <= full_msg[43:42];
-          addr_reg  <= full_msg[41:32];
-          data_reg  <= full_msg[31:0];
-
-          rx_done   <= 1'b1;      // tells next-state logic to go to MEMORY
-          rx_cnt    <= '0;        // reset for future transactions
+          rx_bit_count <= rx_bit_count + 1'b1;
         end
       end
-
-      // mem_pulse is the *delayed* (next-cycle) version of rx_done
-      mem_pulse <= rx_done;
     end
   end
 
-  // ---------- One-cycle, registered enables on mem_pulse (posedge) ----------
+  // Memory access control
   always_ff @(posedge sclk) begin
     if (cs_n) begin
-      r_en_q <= 1'b0;
-      w_en_q <= 1'b0;
+      mem_access_en <= 1'b0;
     end else begin
-      r_en_q <= mem_pulse && (op_reg == 2'b00);  // READ
-      w_en_q <= mem_pulse && (op_reg == 2'b01);  // WRITE
+      mem_access_en <= (state == MEMORY);
     end
   end
 
-  // ---------- Prepare TX and arm for immediate negedge output ----------
-  logic prev_mem_pulse;  // to detect rising edge of mem_pulse
-
+  // Memory enable signals
   always_ff @(posedge sclk) begin
     if (cs_n) begin
-      tx_shift <= '0;
-      tx_arm   <= 1'b0;
-      tx_cnt   <= '0;
-      prev_mem_pulse <= 1'b0;
+      r_en <= 1'b0;
+      w_en <= 1'b0;
     end else begin
-      prev_mem_pulse <= mem_pulse;
+      r_en <= mem_access_en && (op_code == 2'b00);  // READ
+      w_en <= mem_access_en && (op_code == 2'b01);  // WRITE
+    end
+  end
 
-      if (mem_pulse) begin
-        // For READ: response = op+addr + data_i (RAM is comb on r_en in this lab)
-        // For WRITE: response = echo of original message
-        tx_shift <= (op_reg == 2'b00) ? {msg[43:32], data_i} : msg;
-        tx_arm   <= 1'b1;      // arm for the immediate next negedge
-        tx_cnt   <= '0;        // CRITICAL: reset bit index for new transmission
+  // TX preparation and control
+  always_ff @(posedge sclk) begin
+    if (cs_n) begin
+      tx_shift_reg <= '0;
+      tx_bit_count <= '0;
+      tx_armed <= 1'b0;
+    end else begin
+      if (state == MEMORY) begin
+        // Load TX shift register during memory cycle
+        if (op_code == 2'b00) begin
+          // READ: return op+addr from message, data from RAM
+          tx_shift_reg <= {message[43:32], data_i};
+        end else begin
+          // WRITE: echo entire message
+          tx_shift_reg <= message;
+        end
+        tx_bit_count <= '0;
+        tx_armed <= 1'b1;  // ARM: Signal to start TX on very next negedge
       end else if (state == TRANSMIT) begin
-        tx_arm <= 1'b0;        // clear arm once in TRANSMIT state
-        // Increment counter for each bit being transmitted
-        if (tx_cnt < 6'd43) begin
-          tx_cnt <= tx_cnt + 1'b1;
+        tx_armed <= 1'b0;  // Not really needed anymore but keep for safety
+        // Simple increment
+        if (tx_bit_count < 6'd43) begin
+          tx_bit_count <= tx_bit_count + 1'b1;
         end
-      end else if (state == MEMORY && prev_mem_pulse) begin
-        // Special case: increment after first bit sent during armed half-cycle
-        if (tx_cnt == 0) begin
-          tx_cnt <= 1'b1;
-        end
+      end else begin
+        tx_armed <= 1'b0;
       end
     end
   end
 
-  // ---------- Drive MISO on negedge ----------
+  // MISO output - drive on negedge
+  // Need to start outputting during MEMORY state's negedge for correct timing
   always_ff @(negedge sclk) begin
     if (cs_n) begin
       miso <= 1'b0;
-    end else if (tx_arm || state == TRANSMIT) begin
-      miso <= tx_shift[43 - tx_cnt];   // MSB first
+    end else if ((state == MEMORY && mem_access_en) || state == TRANSMIT) begin
+      // Start output during MEMORY (after tx_shift_reg is loaded) and continue in TRANSMIT
+      miso <= tx_shift_reg[43 - tx_bit_count];
     end else begin
       miso <= 1'b0;
     end
