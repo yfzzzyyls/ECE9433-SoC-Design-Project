@@ -1,5 +1,3 @@
-`timescale 1ns/1ps
-
 module spi_sub (
   input  logic        sclk,
   input  logic        cs_n,

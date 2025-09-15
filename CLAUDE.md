@@ -31,7 +31,7 @@ VCS (Synopsys VCS simulator) is used for compilation and simulation:
 ```bash
 # Compile in lab directory (creates simv executable)
 cd lab1/  # or lab2/
-vcs -sverilog -debug_all +v2k -timescale=1ns/1ps *.sv
+vcs -sverilog -debug_all +v2k *.sv
 
 # Run simulation
 ./simv
@@ -261,3 +261,24 @@ All tests passed!
 5. **Combinational vs Sequential Logic**: When you need immediate response (like RAM data for TX), use combinational logic
 6. **Split Complex Operations**: Separate combinational data preparation from sequential state updates
 7. **The Power of Combinational Bypass**: Sometimes you need combinational paths to meet timing requirements, especially when data from one block (RAM) needs to be immediately available to another (TX output)
+
+## Critical SystemVerilog Rules for This Course
+
+### NEVER Use Timescale Directives
+**IMPORTANT**: Do NOT use `timescale` directives in SystemVerilog files for this course.
+- Timescale directives (e.g., `timescale 1ns/1ps`) cause autograder failures
+- The autograder will fail with cryptic errors like "/bin/sh: 0: Illegal option -h"
+- VCS compilation and local simulation work fine without timescale directives
+- All timing is handled by the simulator defaults
+- This rule was explicitly stated by the instructor and confirmed through debugging
+
+Example of what NOT to do:
+```systemverilog
+`timescale 1ns/1ps  // DO NOT USE THIS!
+module spi_sub (...);
+```
+
+Correct approach:
+```systemverilog
+// No timescale directive
+module spi_sub (...);
