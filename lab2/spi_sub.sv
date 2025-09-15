@@ -1,185 +1,153 @@
 module spi_sub (
-    // SPI signals
-    input  logic        sclk,
-    input  logic        cs_n,
-    input  logic        mosi,
-    output logic        miso,
-
-    // Memory signals
-    output logic        r_en,
-    output logic        w_en,
-    output logic [9:0]  addr,
-    output logic [31:0] data_o,
-    input  logic [31:0] data_i
+  input  logic        sclk,
+  input  logic        cs_n,
+  input  logic        mosi,
+  output logic        miso,
+  output logic        r_en,
+  output logic        w_en,
+  output logic [9:0]  addr,
+  output logic [31:0] data_o,
+  input  logic [31:0] data_i
 );
 
-    // Internal registers
-    logic [43:0] rx_shift_reg;     // Receive shift register
-    logic [43:0] tx_shift_reg;     // Transmit shift register
-    logic [5:0]  bit_counter;      // Counts 0-43 for receive
-    logic [5:0]  tx_bit_counter;   // Separate counter for transmit
-    logic [43:0] message_buffer;   // Store complete received message
+  typedef enum logic [1:0] { IDLE=2'b00, RECEIVE=2'b01, MEMORY=2'b10, TRANSMIT=2'b11 } state_t;
+  state_t state, next_state;
 
-    // Registered memory interface signals
-    logic [9:0]  addr_reg;          // Registered address for stable RAM access
-    logic [31:0] data_o_reg;        // Registered data out for stable RAM writes
+  // -------------------- RX (main -> sub) --------------------
+  logic [43:0] rx_shift;     // accumulates incoming bits, MSB-first
+  logic [5:0]  rx_cnt;       // 0..43
+  logic        rx_done;      // strobes when 44th bit captured this posedge
 
-    // State machine - 4 states for proper timing
-    typedef enum logic [1:0] {
-        IDLE     = 2'b00,
-        RECEIVE  = 2'b01,
-        MEMORY   = 2'b10,  // Access memory after receiving
-        TRANSMIT = 2'b11
-    } state_t;
+  // -------------------- Latched message fields --------------------
+  logic [43:0] msg;          // final 44b message (op[43:42], addr[41:32], data[31:0])
+  logic [1:0]  op_reg;
+  logic [9:0]  addr_reg;
+  logic [31:0] data_reg;
 
-    state_t state, next_state;
+  assign addr   = addr_reg;  // tb_top wires lower bits as needed
+  assign data_o = data_reg;
 
-    // Control signals
-    logic message_complete;
-    logic response_start;
-    logic is_read_op;
-    logic is_write_op;
-    logic mem_phase;         // One-cycle strobe for memory access
-    logic [43:0] full_msg;   // Complete message for decoding
+  // -------------------- One-cycle memory access pulse --------------------
+  logic mem_pulse;           // 1 exactly on the posedge AFTER 44th bit is sampled
+  logic r_en_q, w_en_q;
+  assign r_en = r_en_q;
+  assign w_en = w_en_q;
 
-    // Decode operation type
-    assign is_read_op  = (message_buffer[43:42] == 2'b00);
-    assign is_write_op = (message_buffer[43:42] == 2'b01);
+  // -------------------- TX (sub -> main) --------------------
+  logic [43:0] tx_shift;     // what we will send back
+  logic [5:0]  tx_cnt;       // 0..43
+  logic        tx_arm;       // true during the half-cycle between memory posedge and next posedge
 
-    // Message complete when we've received 44 bits
-    assign message_complete = (state == RECEIVE) && (bit_counter == 6'd43);
+  // ---------- State register ----------
+  always_ff @(posedge sclk) begin
+    if (cs_n) state <= IDLE;
+    else      state <= next_state;
+  end
 
-    // Memory interface signals - use registered versions for stability
-    assign addr = addr_reg;
-    assign data_o = data_o_reg;
+  // ---------- Next-state logic ----------
+  always_comb begin
+    next_state = state;
+    unique case (state)
+      IDLE:     if (!cs_n)      next_state = RECEIVE;
+      RECEIVE:  if (rx_done)    next_state = MEMORY;     // finished 44-bit receive
+      MEMORY:                   next_state = TRANSMIT;   // one cycle access
+      TRANSMIT: if (tx_cnt==43) next_state = IDLE;
+      default:                  next_state = IDLE;
+    endcase
+  end
 
-    // Generate mem_phase strobe - active for one cycle when entering MEMORY state
-    always_ff @(posedge sclk) begin
-        if (cs_n) begin
-            mem_phase <= 1'b0;
+  // ---------- Receive 44 bits (sample on posedge, MSB first) ----------
+  always_ff @(posedge sclk) begin
+    if (cs_n) begin
+      rx_shift  <= '0;
+      rx_cnt    <= '0;
+      rx_done   <= 1'b0;
+      msg       <= '0;
+      op_reg    <= 2'b00;
+      addr_reg  <= '0;
+      data_reg  <= '0;
+      mem_pulse <= 1'b0;
+    end else begin
+      // Default values
+      rx_done <= 1'b0;
+
+      if (state == RECEIVE) begin
+        // shift in current bit (MSB first)
+        rx_shift <= {rx_shift[42:0], mosi};
+
+        if (rx_cnt < 6'd43) begin
+          rx_cnt <= rx_cnt + 1'b1;
         end else begin
-            // Raise mem_phase when transitioning from RECEIVE to MEMORY
-            mem_phase <= (state == RECEIVE) && (next_state == MEMORY);
+          // This is the 44th bit; assemble the *complete* message using previous 43 + current bit.
+          logic [43:0] full_msg = {rx_shift[42:0], mosi};
+          msg       <= full_msg;
+          op_reg    <= full_msg[43:42];
+          addr_reg  <= full_msg[41:32];
+          data_reg  <= full_msg[31:0];
+
+          rx_done   <= 1'b1;      // tells next-state logic to go to MEMORY
+          rx_cnt    <= '0;        // reset for future transactions
         end
-    end
+      end
 
-    // Memory control - registered one-shot pulses synchronized with mem_phase
-    always_ff @(posedge sclk) begin
-        if (cs_n) begin
-            r_en <= 1'b0;
-            w_en <= 1'b0;
-        end else begin
-            // Use mem_phase for clean one-cycle pulse
-            r_en <= mem_phase && (message_buffer[43:42] == 2'b00);  // READ
-            w_en <= mem_phase && (message_buffer[43:42] == 2'b01);  // WRITE
+      // mem_pulse is the *delayed* (next-cycle) version of rx_done
+      mem_pulse <= rx_done;
+    end
+  end
+
+  // ---------- One-cycle, registered enables on mem_pulse (posedge) ----------
+  always_ff @(posedge sclk) begin
+    if (cs_n) begin
+      r_en_q <= 1'b0;
+      w_en_q <= 1'b0;
+    end else begin
+      r_en_q <= mem_pulse && (op_reg == 2'b00);  // READ
+      w_en_q <= mem_pulse && (op_reg == 2'b01);  // WRITE
+    end
+  end
+
+  // ---------- Prepare TX and arm for immediate negedge output ----------
+  logic prev_mem_pulse;  // to detect rising edge of mem_pulse
+
+  always_ff @(posedge sclk) begin
+    if (cs_n) begin
+      tx_shift <= '0;
+      tx_arm   <= 1'b0;
+      tx_cnt   <= '0;
+      prev_mem_pulse <= 1'b0;
+    end else begin
+      prev_mem_pulse <= mem_pulse;
+
+      if (mem_pulse) begin
+        // For READ: response = op+addr + data_i (RAM is comb on r_en in this lab)
+        // For WRITE: response = echo of original message
+        tx_shift <= (op_reg == 2'b00) ? {msg[43:32], data_i} : msg;
+        tx_arm   <= 1'b1;      // arm for the immediate next negedge
+        tx_cnt   <= '0;        // CRITICAL: reset bit index for new transmission
+      end else if (state == TRANSMIT) begin
+        tx_arm <= 1'b0;        // clear arm once in TRANSMIT state
+        // Increment counter for each bit being transmitted
+        if (tx_cnt < 6'd43) begin
+          tx_cnt <= tx_cnt + 1'b1;
         end
-    end
-
-    // State machine - sequential part
-    always_ff @(posedge sclk) begin
-        if (cs_n) begin
-            state <= IDLE;
-        end else begin
-            state <= next_state;
+      end else if (state == MEMORY && prev_mem_pulse) begin
+        // Special case: increment after first bit sent during armed half-cycle
+        if (tx_cnt == 0) begin
+          tx_cnt <= 1'b1;
         end
+      end
     end
+  end
 
-    // State machine - combinational part
-    always_comb begin
-        next_state = state;
-
-        case (state)
-            IDLE: begin
-                if (!cs_n)
-                    next_state = RECEIVE;
-            end
-
-            RECEIVE: begin
-                if (bit_counter == 6'd43)
-                    next_state = MEMORY;  // Go to MEMORY state after receiving
-            end
-
-            MEMORY: begin
-                next_state = TRANSMIT;  // Single cycle for memory access
-            end
-
-            TRANSMIT: begin
-                if (tx_bit_counter == 6'd43)
-                    next_state = IDLE;
-            end
-
-            default: next_state = IDLE;
-        endcase
+  // ---------- Drive MISO on negedge ----------
+  always_ff @(negedge sclk) begin
+    if (cs_n) begin
+      miso <= 1'b0;
+    end else if (tx_arm || state == TRANSMIT) begin
+      miso <= tx_shift[43 - tx_cnt];   // MSB first
+    end else begin
+      miso <= 1'b0;
     end
-
-    // Receive logic - sample on posedge
-    always_ff @(posedge sclk) begin
-        if (cs_n) begin
-            rx_shift_reg <= 44'b0;
-            bit_counter <= 6'b0;
-            tx_bit_counter <= 6'b0;
-            message_buffer <= 44'b0;
-            addr_reg <= 10'b0;
-            data_o_reg <= 32'b0;
-        end else begin
-            if (state == RECEIVE) begin
-                // Shift in MOSI bit (MSB first)
-                rx_shift_reg <= {rx_shift_reg[42:0], mosi};
-                bit_counter <= bit_counter + 1'b1;
-
-                // Store complete message when we have all 44 bits
-                if (bit_counter == 6'd43) begin
-                    // Form the complete 44-bit message including the current bit
-                    full_msg = {rx_shift_reg[42:0], mosi};  // Blocking assignment
-                    message_buffer <= full_msg;              // Store for later states
-
-                    // Also latch address and data for stable memory access
-                    addr_reg <= full_msg[41:32];            // 10-bit address
-                    data_o_reg <= full_msg[31:0];           // 32-bit data
-                end
-            end else if (state == MEMORY) begin
-                // Initialize tx counter for transmit phase
-                tx_bit_counter <= 6'b0;
-            end else if (state == TRANSMIT) begin
-                // Increment tx counter after each bit sent
-                if (tx_bit_counter < 6'd43) begin
-                    tx_bit_counter <= tx_bit_counter + 1'b1;
-                end
-            end
-        end
-    end
-
-    // Prepare transmit data - load when entering TRANSMIT state
-    always_ff @(posedge sclk) begin
-        if (cs_n) begin
-            tx_shift_reg <= 44'b0;
-        end else if (state == MEMORY && next_state == TRANSMIT) begin
-            // Load transmit register when transitioning to TRANSMIT
-            // At this point, data_i is valid from the MEMORY state
-            if (is_read_op) begin
-                // For read: return opcode, address, and data from RAM
-                tx_shift_reg <= {message_buffer[43:32], data_i};
-            end else begin
-                // For write: echo the complete message
-                tx_shift_reg <= message_buffer;
-            end
-        end
-        // Note: tx_shift_reg doesn't shift - we use tx_bit_counter to index
-    end
-
-    // Transmit output logic - update miso on negedge
-    always_ff @(negedge sclk) begin
-        if (cs_n) begin
-            miso <= 1'b0;
-        end else begin
-            if (state == TRANSMIT) begin
-                // Transmit MSB first using tx_bit_counter to index
-                // tx_bit_counter goes 0->43, we want to send bits 43->0
-                miso <= tx_shift_reg[43 - tx_bit_counter];
-            end else begin
-                miso <= 1'b0;
-            end
-        end
-    end
+  end
 
 endmodule
