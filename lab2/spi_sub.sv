@@ -1,4 +1,3 @@
-`timescale 1ns/1ps
 
 module spi_sub (
   input  logic        sclk,
@@ -37,6 +36,7 @@ module spi_sub (
 
   // TX signals
   logic [43:0] tx_shift_reg;
+  logic [43:0] tx_data;       // Combinational TX data preparation
   logic [5:0]  tx_bit_count;
   logic        tx_armed;      // Flag to start TX on next negedge
 
@@ -46,6 +46,10 @@ module spi_sub (
   // Continuous assignments
   assign addr = addr_internal;
   assign data_o = data_internal;
+
+  // Combinational memory enables for immediate response
+  assign r_en = (state == MEMORY) && (op_code == 2'b00);
+  assign w_en = (state == MEMORY) && (op_code == 2'b01);
 
   // State machine - sequential
   always_ff @(posedge sclk) begin
@@ -125,14 +129,15 @@ module spi_sub (
     end
   end
 
-  // Memory enable signals
-  always_ff @(posedge sclk) begin
-    if (cs_n) begin
-      r_en <= 1'b0;
-      w_en <= 1'b0;
+
+  // Combinational TX data preparation
+  always_comb begin
+    if (op_code == 2'b00) begin
+      // READ: return op+addr from message, data from RAM
+      tx_data = {message[43:32], data_i};
     end else begin
-      r_en <= mem_access_en && (op_code == 2'b00);  // READ
-      w_en <= mem_access_en && (op_code == 2'b01);  // WRITE
+      // WRITE: echo entire message
+      tx_data = message;
     end
   end
 
@@ -145,18 +150,12 @@ module spi_sub (
     end else begin
       if (state == MEMORY) begin
         // Load TX shift register during memory cycle
-        if (op_code == 2'b00) begin
-          // READ: return op+addr from message, data from RAM
-          tx_shift_reg <= {message[43:32], data_i};
-        end else begin
-          // WRITE: echo entire message
-          tx_shift_reg <= message;
-        end
-        tx_bit_count <= '0;
+        tx_shift_reg <= tx_data;  // Use combinational tx_data
+        tx_bit_count <= 6'd1;  // Start at 1 since bit[43] is output during MEMORY
         tx_armed <= 1'b1;  // ARM: Signal to start TX on very next negedge
       end else if (state == TRANSMIT) begin
         tx_armed <= 1'b0;  // Not really needed anymore but keep for safety
-        // Simple increment
+        // Increment for next bit
         if (tx_bit_count < 6'd43) begin
           tx_bit_count <= tx_bit_count + 1'b1;
         end
@@ -166,13 +165,18 @@ module spi_sub (
     end
   end
 
-  // MISO output - drive on negedge
+  // MISO output and bit counter - drive on negedge
   // Need to start outputting during MEMORY state's negedge for correct timing
   always_ff @(negedge sclk) begin
     if (cs_n) begin
       miso <= 1'b0;
-    end else if ((state == MEMORY && mem_access_en) || state == TRANSMIT) begin
-      // Start output during MEMORY (after tx_shift_reg is loaded) and continue in TRANSMIT
+    end else if (state == MEMORY) begin
+      // During MEMORY state, output first bit (bit 43)
+      // tx_bit_count will be 1 on next posedge, but we output bit 43 directly
+      miso <= tx_data[43];
+    end else if (state == TRANSMIT) begin
+      // During TRANSMIT state, continue outputting bits
+      // tx_bit_count has been incremented on posedge
       miso <= tx_shift_reg[43 - tx_bit_count];
     end else begin
       miso <= 1'b0;
