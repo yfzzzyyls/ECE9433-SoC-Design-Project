@@ -63,15 +63,12 @@ module spi_tb (
     begin
       rx_data = 44'b0;
 
-      // Per Figure 5:
-      // - Memory access on "next posedge" after last bit
-      // - Feedback starts on "following negedge" after memory pulse
-      // So we wait for posedge (memory), then negedge (TX start), then posedge to sample
-      @(posedge sclk);  // Memory access happens here
-      @(negedge sclk);  // TX starts on this following negedge
+      // Wait for at least one posedge for memory access
+      @(posedge sclk);
 
-      // Receive 44 bits MSB first
-      // Sub drives on negedge, main samples on posedge
+      // Now we need to sample 44 bits
+      // The sub drives on negedge, main samples on posedge
+      // We should sample starting from the next posedge
       for (i = 43; i >= 0; i = i - 1) begin
         @(posedge sclk);
         rx_data[i] = miso;

@@ -120,8 +120,6 @@ module spi_sub (
         end
 
         MEMORY: begin
-          // Memory access for ONE CYCLE as per spec
-          // r_en and w_en are now combinational (see assign statements)
           if (op_code == 2'b00) begin
             // For reads, capture data_i into tx_data_write
             tx_data_write <= {op_code, addr_reg, data_i};
@@ -133,8 +131,6 @@ module spi_sub (
         end
 
         TRANSMIT: begin
-          // Continue transmission (first bit was output in MEMORY state)
-          // NO memory enables during transmit - spec says ONE cycle only
           if (bit_count < 6'd44) begin
             bit_count <= bit_count + 6'd1;
           end
@@ -148,8 +144,6 @@ module spi_sub (
     if (cs_n) begin
       miso <= 1'b0;
     end
-    // Start feedback on the FOLLOWING negedge after MEMORY pulse (per Figure 5)
-    // At this negedge, state has transitioned to TRANSMIT and bit_count is 1
     else if (state == TRANSMIT && bit_count == 1) begin
       miso <= tx_data[43];  // First bit (MSB) exactly one half-cycle after the memory pulse
     end
