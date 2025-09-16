@@ -125,7 +125,6 @@ module spi_sub (
           if (op_code == 2'b00) begin
             // For reads, capture data_i into tx_data_write
             tx_data_write <= {op_code, addr_reg, data_i};
-            //$display("DEBUG MEMORY READ: time=%0t, data_i=%h, bit_count=%d", $time, data_i, bit_count);
           end else if (op_code == 2'b01) begin
             // For writes, register the echo data
             tx_data_write <= {op_code, addr_reg, data_reg};
@@ -148,11 +147,17 @@ module spi_sub (
   always_ff @(negedge sclk) begin
     if (cs_n) begin
       miso <= 1'b0;
-    end else if (state == TRANSMIT && bit_count <= 44) begin
-      // Output bits during TRANSMIT state
-      // bit_count=1 outputs bit 43, bit_count=2 outputs bit 42, etc.
+    end
+    // Start feedback on the FOLLOWING negedge after MEMORY pulse (per Figure 5)
+    // At this negedge, state has transitioned to TRANSMIT and bit_count is 1
+    else if (state == TRANSMIT && bit_count == 1) begin
+      miso <= tx_data[43];  // First bit (MSB) exactly one half-cycle after the memory pulse
+    end
+    else if (state == TRANSMIT && bit_count >= 2 && bit_count <= 44) begin
+      // bit_count=2 outputs bit 42, bit_count=3 outputs bit 41, etc.
       miso <= tx_data[44 - bit_count];
-    end else begin
+    end
+    else begin
       miso <= 1'b0;
     end
   end

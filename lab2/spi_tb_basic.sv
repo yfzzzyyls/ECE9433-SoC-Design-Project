@@ -63,8 +63,12 @@ module spi_tb (
     begin
       rx_data = 44'b0;
 
-      // Wait for memory access cycle (per spec: "next posedge" after last bit)
-      @(posedge sclk);
+      // Per Figure 5:
+      // - Memory access on "next posedge" after last bit
+      // - Feedback starts on "following negedge" after memory pulse
+      // So we wait for posedge (memory), then negedge (TX start), then posedge to sample
+      @(posedge sclk);  // Memory access happens here
+      @(negedge sclk);  // TX starts on this following negedge
 
       // Receive 44 bits MSB first
       // Sub drives on negedge, main samples on posedge
@@ -97,15 +101,6 @@ module spi_tb (
     end
   endtask
 
-  // Debug monitoring
-  always @(posedge sclk) begin
-    if (w_en) begin
-      $display("DEBUG: Write enable at time %0t, addr=%h, data=%h", $time, addr, data_o);
-    end
-    if (r_en) begin
-      $display("DEBUG: Read enable at time %0t, addr=%h, data_i=%h", $time, addr, data_i);
-    end
-  end
 
   // Main test sequence
   initial begin
