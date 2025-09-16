@@ -63,7 +63,7 @@ module spi_tb (
     begin
       rx_data = 44'b0;
 
-      // Wait for memory access cycle
+      // Wait for memory access cycle (per spec: "next posedge" after last bit)
       @(posedge sclk);
 
       // Receive 44 bits MSB first
@@ -128,6 +128,7 @@ module spi_tb (
       error_count = error_count + 1;
     end else begin
       $display("PASS: Write echo correct");
+      $display("  Response: Op=%b, Addr=%h, Data=%h", rx_data[43:42], rx_data[41:32], rx_data[31:0]);
     end
 
     // Test 2: Read operation
@@ -147,6 +148,7 @@ module spi_tb (
       error_count = error_count + 1;
     end else begin
       $display("PASS: Read data correct");
+      $display("  Response: Op=%b, Addr=%h, Data=%h", rx_data[43:42], rx_data[41:32], rx_data[31:0]);
     end
 
     // Test 3: Write to different address

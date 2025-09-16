@@ -66,7 +66,7 @@ module spi_sub (
         if (!cs_n) next_state = RECEIVE;
       end
       RECEIVE: begin
-        if (bit_count == 6'd44) next_state = MEMORY;
+        if (bit_count == 6'd43) next_state = MEMORY;  // Transition when capturing last bit
       end
       MEMORY: begin
         next_state = TRANSMIT;
@@ -107,13 +107,15 @@ module spi_sub (
             shift_reg <= {shift_reg[42:0], mosi};
             bit_count <= bit_count + 6'd1;
 
-          end
-
-          if (bit_count == 6'd44) begin
-            // Extract fields from complete message
-            op_code <= shift_reg[43:42];
-            addr_reg <= shift_reg[41:32];
-            data_reg <= shift_reg[31:0];
+            // When we just captured the 44th bit (bit_count was 43, now 44)
+            if (bit_count == 6'd43) begin
+              // Build complete message including the bit we're capturing now
+              logic [43:0] complete_msg;
+              complete_msg = {shift_reg[42:0], mosi};
+              op_code <= complete_msg[43:42];
+              addr_reg <= complete_msg[41:32];
+              data_reg <= complete_msg[31:0];
+            end
           end
         end
 
@@ -123,12 +125,12 @@ module spi_sub (
           if (op_code == 2'b00) begin
             // For reads, capture data_i into tx_data_write
             tx_data_write <= {op_code, addr_reg, data_i};
-            //$display("DEBUG MEMORY READ: time=%0t, data_i=%h, capturing to tx_data_write", $time, data_i);
+            //$display("DEBUG MEMORY READ: time=%0t, data_i=%h, bit_count=%d", $time, data_i, bit_count);
           end else if (op_code == 2'b01) begin
             // For writes, register the echo data
             tx_data_write <= {op_code, addr_reg, data_reg};
           end
-          bit_count <= 6'd2; // Compensate for 1-bit shift
+          bit_count <= 6'd1; // Will output first bit on negedge, then increment
         end
 
         TRANSMIT: begin
@@ -146,16 +148,10 @@ module spi_sub (
   always_ff @(negedge sclk) begin
     if (cs_n) begin
       miso <= 1'b0;
-    end else if ((state == MEMORY && next_state == TRANSMIT) ||
-                 (state == TRANSMIT && bit_count >= 2 && bit_count <= 44)) begin
-      // Start outputting on the negedge after memory access
-      if (state == MEMORY) begin
-        miso <= tx_data[43]; // First bit (MSB)
-      end else begin
-        // In TRANSMIT state, continue outputting remaining bits
-        // bit_count=2 outputs bit 42, bit_count=44 outputs bit 0
-        miso <= tx_data[44 - bit_count];
-      end
+    end else if (state == TRANSMIT && bit_count <= 44) begin
+      // Output bits during TRANSMIT state
+      // bit_count=1 outputs bit 43, bit_count=2 outputs bit 42, etc.
+      miso <= tx_data[44 - bit_count];
     end else begin
       miso <= 1'b0;
     end
