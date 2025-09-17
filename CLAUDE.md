@@ -253,6 +253,13 @@ All tests passed!
 3. **TX**: Drive on negedge, MSB first, start immediately after memory access
 4. **Testbench Expectation**: After sending 44 bits, waits 1 posedge (memory cycle), then samples 44 bits
 
+### CRITICAL HINT FROM PROFESSOR (Dec 2024)
+**Focus on Section 4.3 of the specification PDF**, especially understanding the edge timing. If your waveform matches exactly what Section 4.3 shows, you should get it correct. The key edges from the clarification:
+- **Edge 8**: Last bit sampled by sub (posedge)
+- **Edge 10**: Memory pulse - w_en/r_en asserted (next posedge after last bit)
+- **Edge 13**: MISO starts transmitting (following negedge after memory pulse)
+- Important: MISO starting at edge 13 doesn't mean it changes from 0 to 1 - it means transmission begins, even if first bit is 0
+
 ### Lessons Learned
 1. **Avoid Multiple Drivers**: Each signal should be driven by exactly one always block
 2. **Consider State Transitions**: Use `next_state` for combinational checks when state hasn't updated yet
