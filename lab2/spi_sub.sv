@@ -114,37 +114,40 @@ module spi_sub (
       case (state)
         IDLE: begin
           if (!cs_n) begin
-            // cs_n is low - prepare for new frame
-            // Special handling: if bit_count==44, we just came from TRANSMIT
-            // and should wait one cycle before capturing (gap between frames)
+            // cs_n is low
             if (bit_count == 6'd44) begin
-              // Just finished transmitting, wait for gap
-              bit_count <= 6'd0;  // Reset for next frame
+              // Just came from TRANSMIT, this is the gap cycle
+              // Reset everything but don't capture first bit yet
+              bit_count <= '0;
               shift_reg <= '0;
               in_main_msg <= 1'b1;
-              // Clear registers but don't capture first bit yet
               op_code <= '0;
               addr_reg <= '0;
               data_reg <= '0;
               tx_data_write <= '0;
               complete_message <= '0;
-            end else begin
-              // Either initial frame or after gap - capture first bit
+            end else if (next_state == RECEIVE) begin
+              // Normal transition to RECEIVE, capture first bit
               shift_reg <= {43'b0, mosi};
-              bit_count <= 6'd1;  // Already have first bit
-              in_main_msg <= 1'b1;
-              // Reset message parsing registers
+              bit_count <= 6'd1;
+              in_main_msg <= 1'b1;  // Track Main's message
+              // Clear message parsing registers for new frame
               op_code <= '0;
               addr_reg <= '0;
               data_reg <= '0;
               tx_data_write <= '0;
               complete_message <= '0;
             end
+            // Don't reset anything else when cs_n is low
           end else begin
             // cs_n is high, do full reset
             bit_count <= '0;
             shift_reg <= '0;
             in_main_msg <= 1'b0;
+            op_code <= '0;
+            addr_reg <= '0;
+            data_reg <= '0;
+            tx_data_write <= '0;
             complete_message <= '0;
           end
         end
@@ -185,7 +188,7 @@ module spi_sub (
             bit_count <= bit_count + 6'd1;
           end
           // When we reach 44, we'll transition to IDLE on next cycle
-          // IDLE will handle the reset
+          // Keep bit_count at 44 as a flag for IDLE state
         end
       endcase
     end
