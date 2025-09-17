@@ -23,62 +23,25 @@ module spi_sub (
   state_t state, next_state;
 
   // Internal registers
-  logic [43:0] shift_reg;
-  logic [5:0]  bit_count;
+  logic [43:0] shift_reg;     // For receiving data
+  logic [43:0] tx_reg;         // For transmitting data
+  logic [5:0]  bit_count;      // Count bits (0-43)
+
+  // Extracted fields
   logic [1:0]  op_code;
   logic [9:0]  addr_reg;
   logic [31:0] data_reg;
-  logic [43:0] tx_data;
-  logic [43:0] tx_data_write;
-  logic        async_clear;  // Flag for negedge->posedge reset
-  logic        in_main_msg;  // Track when Main is sending
-  logic [43:0] current_msg;  // Complete message assembly
-  logic [43:0] complete_message; // Captured complete message
 
-  // Continuous assignments
-  assign current_msg = {shift_reg[42:0], mosi};
-  // During MEMORY state, use captured complete message; otherwise use registered values
-  assign addr = (state == MEMORY) ? complete_message[41:32] : addr_reg;
-  assign data_o = (state == MEMORY) ? complete_message[31:0] : data_reg;
-  // Memory enables must be combinational for one-cycle access
-  // Use the captured complete message to determine operation during MEMORY state
-  assign r_en = (state == MEMORY) && (complete_message[43:42] == 2'b00);
-  assign w_en = (state == MEMORY) && (complete_message[43:42] == 2'b01);
-
-  // Debug complete_message during MEMORY state (commented out for production)
-  // always @(posedge sclk) begin
-  //   if (state == MEMORY) begin
-  //     $display("DEBUG MEMORY: time=%0t, complete_msg=0x%h, bit_count=%d",
-  //              $time, complete_message, bit_count);
-  //   end
-  //   if (state == RECEIVE && bit_count == 43) begin
-  //     $display("DEBUG RECEIVE: Capturing last bit, shift_reg=0x%h, mosi=%b",
-  //              shift_reg[42:0], mosi);
-  //   end
-  // end
-
-  // Combinational TX data selection
-  always_comb begin
-    if (complete_message[43:42] == 2'b00 && state == MEMORY) begin
-      // For reads during MEMORY state, use current data_i from RAM
-      tx_data = {complete_message[43:42], complete_message[41:32], data_i};
-    end else begin
-      // For writes and during TRANSMIT state, use registered value
-      tx_data = tx_data_write;
-    end
-  end
-
-  // State machine
+  // State machine - posedge
   always_ff @(posedge sclk) begin
-    // Fix #1: Honor negedge reset via async_clear flag
-    if (cs_n || async_clear) begin
+    if (cs_n) begin
       state <= IDLE;
     end else begin
       state <= next_state;
     end
   end
 
-  // Next state logic
+  // Next state logic - combinational
   always_comb begin
     next_state = state;
     case (state)
@@ -86,69 +49,34 @@ module spi_sub (
         if (!cs_n) next_state = RECEIVE;
       end
       RECEIVE: begin
-        if (bit_count == 6'd43) next_state = MEMORY;  // Transition when capturing last bit
+        if (bit_count == 6'd43) next_state = MEMORY;
       end
       MEMORY: begin
         next_state = TRANSMIT;
       end
       TRANSMIT: begin
-        if (bit_count == 6'd44) next_state = IDLE;
+        if (bit_count == 6'd43) next_state = IDLE;
       end
     endcase
   end
 
-  // Main sequential logic
+  // Main logic - posedge
   always_ff @(posedge sclk) begin
-    // Fix #1: Include async_clear in reset condition
-    if (cs_n || async_clear) begin
-      // Reset everything
+    if (cs_n) begin
+      // Reset everything when cs_n is high
       shift_reg <= '0;
+      tx_reg <= '0;
       bit_count <= '0;
       op_code <= '0;
       addr_reg <= '0;
       data_reg <= '0;
-      tx_data_write <= '0;
-      in_main_msg <= 1'b0;
     end else begin
-
       case (state)
         IDLE: begin
-          if (!cs_n) begin
-            // cs_n is low
-            if (bit_count == 6'd44) begin
-              // Just came from TRANSMIT, this is the gap cycle
-              // Reset everything but don't capture first bit yet
-              bit_count <= '0;
-              shift_reg <= '0;
-              in_main_msg <= 1'b1;
-              op_code <= '0;
-              addr_reg <= '0;
-              data_reg <= '0;
-              tx_data_write <= '0;
-              complete_message <= '0;
-            end else if (next_state == RECEIVE) begin
-              // Normal transition to RECEIVE, capture first bit
-              shift_reg <= {43'b0, mosi};
-              bit_count <= 6'd1;
-              in_main_msg <= 1'b1;  // Track Main's message
-              // Clear message parsing registers for new frame
-              op_code <= '0;
-              addr_reg <= '0;
-              data_reg <= '0;
-              tx_data_write <= '0;
-              complete_message <= '0;
-            end
-            // Don't reset anything else when cs_n is low
-          end else begin
-            // cs_n is high, do full reset
-            bit_count <= '0;
+          if (next_state == RECEIVE) begin
+            // Starting new reception - reset for fresh start
             shift_reg <= '0;
-            in_main_msg <= 1'b0;
-            op_code <= '0;
-            addr_reg <= '0;
-            data_reg <= '0;
-            tx_data_write <= '0;
-            complete_message <= '0;
+            bit_count <= 6'd0;
           end
         end
 
@@ -158,70 +86,53 @@ module spi_sub (
             shift_reg <= {shift_reg[42:0], mosi};
             bit_count <= bit_count + 6'd1;
 
-            // When we just captured the 44th bit (bit_count was 43, now 44)
+            // Extract fields when we have all 44 bits
             if (bit_count == 6'd43) begin
-              // Build complete message including the bit we're capturing now
-              complete_message <= {shift_reg[42:0], mosi};
+              // Complete message will be {shift_reg[42:0], mosi}
+              // shift_reg has bits [43:1], mosi has bit [0]
+              op_code <= shift_reg[42:41];
+              addr_reg <= shift_reg[40:31];
+              data_reg <= {shift_reg[30:0], mosi};
             end
           end
         end
 
         MEMORY: begin
-          // Use the captured complete message
-          op_code <= complete_message[43:42];
-          addr_reg <= complete_message[41:32];
-          data_reg <= complete_message[31:0];
-
-          if (complete_message[43:42] == 2'b00) begin
-            // For reads, capture data_i into tx_data_write
-            tx_data_write <= {complete_message[43:42], complete_message[41:32], data_i};
-          end else if (complete_message[43:42] == 2'b01) begin
-            // For writes, register the echo data
-            tx_data_write <= complete_message;
+          // Prepare TX data based on operation
+          if (op_code == 2'b00) begin
+            // Read: return op, addr, and data from memory
+            tx_reg <= {op_code, addr_reg, data_i};
+          end else begin
+            // Write or other: echo the received message
+            tx_reg <= {op_code, addr_reg, data_reg};
           end
-          bit_count <= 6'd1; // Will output first bit on negedge, then increment
-          in_main_msg <= 1'b0;  // Fix #3: About to start Sub response
+          bit_count <= 6'd0;  // Reset for transmission
         end
 
         TRANSMIT: begin
           if (bit_count < 6'd44) begin
             bit_count <= bit_count + 6'd1;
           end
-          // When we reach 44, we'll transition to IDLE on next cycle
-          // Keep bit_count at 44 as a flag for IDLE state
         end
       endcase
     end
   end
 
-  // Negedge logic for async_clear flag
-  always_ff @(negedge sclk) begin
-    if (cs_n) begin
-      async_clear <= 1'b1;  // Fix #1: Set flag for posedge reset
-    end else begin
-      async_clear <= 1'b0;
-    end
-  end
+  // Memory control signals - combinational
+  assign r_en = (state == MEMORY) && (op_code == 2'b00);
+  assign w_en = (state == MEMORY) && (op_code == 2'b01);
+  assign addr = addr_reg;
+  assign data_o = data_reg;
 
-  // MISO output logic
+  // MISO output - negedge
   always_ff @(negedge sclk) begin
     if (cs_n) begin
       miso <= 1'b0;
-    end
-    // Fix #3: Guarantee miso=0 during Main's message
-    else if (in_main_msg) begin
-      miso <= 1'b0;  // Hard-clamp during Main's frame
-    end
-    // Start TX on the following negedge after memory pulse
-    // At this negedge, state is MEMORY but bit_count was just set to 1
-    else if (state == MEMORY && bit_count == 1) begin
-      miso <= tx_data[43];  // First bit (MSB) on following negedge
-    end
-    else if (state == TRANSMIT && bit_count >= 2 && bit_count <= 44) begin
-      // bit_count=2 outputs bit 42, bit_count=3 outputs bit 41, etc.
-      miso <= tx_data[44 - bit_count];
-    end
-    else begin
+    end else if (state == TRANSMIT) begin
+      // Output bits MSB first
+      miso <= tx_reg[43 - bit_count];
+    end else begin
+      // During receive or idle, keep miso low
       miso <= 1'b0;
     end
   end
