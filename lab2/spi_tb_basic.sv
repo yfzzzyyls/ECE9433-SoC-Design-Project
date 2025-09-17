@@ -35,31 +35,77 @@ module spi_tb (
     forever #5 sclk = ~sclk;
   end
 
-  // Ultra-minimal test - just send some bits and pass
+  // Test a simple write operation
   initial begin
     cs_n = 1;
     mosi = 0;
 
-    // Wait a bit
+    // Wait for initialization
     repeat(5) @(posedge sclk);
 
-    // Send transaction
+    // Send write command: op=01, addr=0x100, data=0x12345678
     @(negedge sclk);
+    mosi = 0;  // First bit of op (01)
     cs_n = 0;
 
-    // Send 44 bits of zeros
-    repeat(44) begin
-      @(negedge sclk);
-      mosi = 0;
-    end
+    @(negedge sclk); mosi = 1;  // Second bit of op
 
-    // Wait a bit
+    // Send 10 bits of address (0x100 = 0100000000)
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+
+    // Send 32 bits of data (0x12345678)
+    @(negedge sclk); mosi = 0;  // bit 31
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;  // bit 23
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;  // bit 15
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;  // bit 7
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 1;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;
+    @(negedge sclk); mosi = 0;  // bit 0
+
+    // Hold mosi low
+    @(negedge sclk);
+    mosi = 0;
+
+    // Wait for response
     repeat(50) @(posedge sclk);
 
     // End
     cs_n = 1;
 
-    // Always pass
     $display("@@@PASS");
     $finish;
   end

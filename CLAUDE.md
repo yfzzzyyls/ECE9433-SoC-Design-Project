@@ -253,12 +253,84 @@ All tests passed!
 3. **TX**: Drive on negedge, MSB first, start immediately after memory access
 4. **Testbench Expectation**: After sending 44 bits, waits 1 posedge (memory cycle), then samples 44 bits
 
-### CRITICAL HINT FROM PROFESSOR (Dec 2024)
+### Professor's Critical Hints and Feedback
+
+#### Initial Hint (Dec 2024)
 **Focus on Section 4.3 of the specification PDF**, especially understanding the edge timing. If your waveform matches exactly what Section 4.3 shows, you should get it correct. The key edges from the clarification:
 - **Edge 8**: Last bit sampled by sub (posedge)
 - **Edge 10**: Memory pulse - w_en/r_en asserted (next posedge after last bit)
 - **Edge 13**: MISO starts transmitting (following negedge after memory pulse)
 - Important: MISO starting at edge 13 doesn't mean it changes from 0 to 1 - it means transmission begins, even if first bit is 0
+
+#### General Tips Email (Dec 2024)
+Professor's email about common issues:
+```
+Hi all,
+
+Here are general tips from questions that keep coming up from students:
+
+1. One of the first things you should be doing is making sure that your testbench is valid. If you testbench does not pass the validity check, it means it is testing for behavior that is out of line with the specification. You can't expect your design to be correct if it conforms to tests that are incorrect. (It could also mean a compilation error. Be sure you do not have `timescale in your testbench)
+
+2. Please read the assignment specification carefully. We try our best to make sure the specification is clearly defined and that it resolves all questions about how the design should operate.
+
+3. Please look closely at the waveform diagrams and the example VCD file. Several students have asked why their design and/or testbench is failing, and they haven't tried reproducing the example waveform file provided.
+
+4. Most students' problems have been off-by-one errors where they add in extra delays. This causes the message to be corrupted, because it deviates from the specification.
+
+5. If you read from an address that was not previously written to, the returned data is undefined. We don't test for this behavior, and you should not try testing for it.
+
+Best,
+Austin
+```
+
+#### Specific Feedback on Testbench Timing Issues
+Professor's response to debugging request with waveform analysis:
+
+**Issue 1: Wrong bits being transmitted**
+```
+It looks like you are trying to do a write operation to address 0x100 with the data 0x9A364721. But from the first few bits transmitted I can see that you are transmitting 001010... which doesn't match up with the string you are trying to send. The first 00 causes the message to be a read message, not a write message, which messes up the rest of the transaction and your testbench therefore reports a failure.
+```
+
+**Issue 2: Extra negedge delays**
+```
+I think in your testbench, the following line is causing an extra negedge to be added for every transaction. This delays the signal by 1 cycle and causes the wrong bits to be sent. Please look at the figures in the spec very carefully and make sure you are sending the correct bits on the correct edges.
+
+In this for loop, the negedge comes first so you are also adding another cycle of delay before the signal gets updated. Please check that you are not delaying the signals that you are trying to transmit.
+```
+
+**Critical testbench timing requirements:**
+1. Bits must start being sent immediately from the first posedge sclk after cs_n goes low
+2. Bits must be sent in MSB order
+3. No extra negedge delays before asserting cs_n
+4. First bit must be on MOSI when cs_n is asserted
+
+### Mutation Testing Rules (Lab 2 Autograder)
+
+#### Overview
+The autograder uses mutation testing to verify testbench quality. Your testbenches must catch bugs in mutated (buggy) designs while correctly passing the instructor's correct design.
+
+#### Key Rules
+1. **Multiple Testbenches Allowed**: You can submit multiple testbenches (e.g., `spi_tb_basic.sv`, `spi_tb_protocol.sv`, etc.)
+2. **False Positive Prevention**: Each testbench is first run against the correct instructor design
+   - If a testbench reports `@@@FAIL` on the correct design → testbench is IGNORED (false positive)
+   - Only testbenches that report `@@@PASS` on correct design are considered valid
+3. **Bug Detection**: Valid testbenches are run against each buggy/mutated design
+   - If ANY valid testbench reports `@@@FAIL` on a buggy design → you get the point for catching that bug
+4. **Targeted Testing Strategy**: Different testbenches can test different behaviors
+   - You don't need one testbench to catch all bugs
+   - Can have specialized testbenches for specific functionality
+5. **Scoring**: To get full points, your combined testbenches must catch ALL bugs
+6. **No Debug Output**: Mutation tests only show pass/fail results, no logs or detailed output
+
+#### Testing Strategy
+- Create multiple focused testbenches, each targeting specific behaviors:
+  - Basic read/write operations
+  - Protocol compliance (timing, bit order)
+  - Edge cases (reset, back-to-back transactions)
+  - Memory interface correctness
+  - Response format validation
+- Each testbench MUST pass the correct design (avoid false positives)
+- Together, testbenches should cover all possible bugs
 
 ### Lessons Learned
 1. **Avoid Multiple Drivers**: Each signal should be driven by exactly one always block
@@ -268,6 +340,9 @@ All tests passed!
 5. **Combinational vs Sequential Logic**: When you need immediate response (like RAM data for TX), use combinational logic
 6. **Split Complex Operations**: Separate combinational data preparation from sequential state updates
 7. **The Power of Combinational Bypass**: Sometimes you need combinational paths to meet timing requirements, especially when data from one block (RAM) needs to be immediately available to another (TX output)
+8. **Testbench Timing is Critical**: Off-by-one errors from extra delays are the most common cause of failures
+9. **Don't Test Undefined Behavior**: Never test reads from unwritten addresses - the data is undefined
+10. **Follow Specification Exactly**: The waveform diagrams and VCD files show the exact required behavior
 
 ## Critical SystemVerilog Rules for This Course
 
