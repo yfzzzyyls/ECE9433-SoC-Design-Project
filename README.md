@@ -49,3 +49,20 @@ make TOOLCHAIN_PREFIX=/path/to/ECE9433-SoC-Design-Project/third_party/riscv-tool
 ```
 
 This creates `firmware/firmware.hex`, which we preload into the behavioral SRAM via `$readmemh` for the PicoRV32 bring-up tests.
+
+## CPU Heartbeat Simulation (VCS)
+
+Compile and run the minimal SoC top + testbench with VCS:
+
+```bash
+cd /path/to/ECE9433-SoC-Design-Project
+mkdir -p build
+vcs -full64 -kdb -sverilog +v2k -timescale=1ns/1ps \
+    sim/soc_top_tb.sv rtl/soc_top.sv third_party/picorv32/picorv32.v \
+    -o build/soc_top_tb
+./build/soc_top_tb
+```
+
+What to expect:
+- The simulator prints the firmware load message and halts when the firmware asserts `trap` (fast run; ~24 cycles on the bundled image).
+- The default `firmware.hex` already includes the upstream self-tests (hello, multest, etc.); if any internal check failed, the firmware would hit `ebreak` differently or hang. For now, “trap reached without timeout” is our pass criterion.
