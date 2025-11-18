@@ -8,7 +8,7 @@ module soc_top #(
     output logic trap
 );
 
-    // PicoRV32 native memory interface.
+    // PicoRV32 native memory interface (master).
     logic        mem_valid;
     logic        mem_instr;
     logic        mem_ready;
@@ -17,6 +17,25 @@ module soc_top #(
     logic [ 3:0] mem_wstrb;
     logic [31:0] mem_rdata;
 
+    // To SRAM slave
+    logic        sram_valid;
+    logic        sram_instr;
+    logic        sram_ready;
+    logic [31:0] sram_addr;
+    logic [31:0] sram_wdata;
+    logic [ 3:0] sram_wstrb;
+    logic [31:0] sram_rdata;
+
+    // To PEU slave
+    logic        peu_valid;
+    logic        peu_instr;
+    logic        peu_ready;
+    logic [31:0] peu_addr;
+    logic [31:0] peu_wdata;
+    logic [ 3:0] peu_wstrb;
+    logic [31:0] peu_rdata;
+
+    // Unused PicoRV32 ports
     logic        mem_la_read;
     logic        mem_la_write;
     logic [31:0] mem_la_addr;
@@ -66,11 +85,11 @@ module soc_top #(
         .trap        (trap),
         .mem_valid   (mem_valid),
         .mem_instr   (mem_instr),
-        .mem_ready   (mem_ready),
-        .mem_addr    (mem_addr),
+        .mem_ready   (mem_ready), // input
+        .mem_addr    (mem_addr),  
         .mem_wdata   (mem_wdata),
         .mem_wstrb   (mem_wstrb),
-        .mem_rdata   (mem_rdata),
+        .mem_rdata   (mem_rdata), // input
         .mem_la_read (mem_la_read),
         .mem_la_write(mem_la_write),
         .mem_la_addr (mem_la_addr),
@@ -90,46 +109,60 @@ module soc_top #(
         .trace_data  (trace_data)
     );
 
-    // Basic synchronous memory model.
-    logic [31:0] sram [0:MEM_WORDS-1];
-    logic [31:0] mem_rdata_q;
-    logic        mem_ready_q;
+    // Interconnect
+    interconnect u_ic (
+        .m_valid   (mem_valid),
+        .m_instr   (mem_instr),
+        .m_ready   (mem_ready),
+        .m_addr    (mem_addr),
+        .m_wdata   (mem_wdata),
+        .m_wstrb   (mem_wstrb),
+        .m_rdata   (mem_rdata),
+        .sram_valid(sram_valid),
+        .sram_instr(sram_instr),
+        .sram_ready(sram_ready),
+        .sram_addr (sram_addr),
+        .sram_wdata(sram_wdata),
+        .sram_wstrb(sram_wstrb),
+        .sram_rdata(sram_rdata),
+        .peu_valid (peu_valid),
+        .peu_instr (peu_instr),
+        .peu_ready (peu_ready),
+        .peu_addr  (peu_addr),
+        .peu_wdata (peu_wdata),
+        .peu_wstrb (peu_wstrb),
+        .peu_rdata (peu_rdata)
+    );
 
-    initial begin : preload_hex
-        if (HEX_PATH != "") begin
-            $display("[%0t] Loading %s", $time, HEX_PATH);
-            $readmemh(HEX_PATH, sram);
-        end
-    end
+    // SRAM slave
+    sram #(
+        .MEM_WORDS(MEM_WORDS),
+        .HEX_PATH (HEX_PATH)
+    ) u_sram (
+        .clk      (clk),
+        .rst_n    (rst_n),
+        .mem_valid(sram_valid),
+        .mem_instr(sram_instr),
+        .mem_ready(sram_ready),
+        .mem_addr (sram_addr),
+        .mem_wdata(sram_wdata),
+        .mem_wstrb(sram_wstrb),
+        .mem_rdata(sram_rdata)
+    );
 
-    always @(posedge clk or negedge rst_n) begin
-        if (!rst_n) begin
-            mem_ready_q <= 1'b0;
-            mem_rdata_q <= '0;
-        end else begin
-            mem_ready_q <= 1'b0;
-            if (mem_valid) begin
-                int unsigned word_addr;
-                logic [31:0] read_word;
-
-                word_addr = mem_addr[31:2];
-                read_word = (word_addr < MEM_WORDS) ? sram[word_addr] : 32'h0000_0000;
-
-                if (word_addr < MEM_WORDS && |mem_wstrb) begin
-                    if (mem_wstrb[0]) read_word[7:0]   = mem_wdata[7:0];
-                    if (mem_wstrb[1]) read_word[15:8]  = mem_wdata[15:8];
-                    if (mem_wstrb[2]) read_word[23:16] = mem_wdata[23:16];
-                    if (mem_wstrb[3]) read_word[31:24] = mem_wdata[31:24];
-                    sram[word_addr] <= read_word;
-                end
-
-                mem_rdata_q <= read_word;
-                mem_ready_q <= 1'b1;
-            end
-        end
-    end
-
-    assign mem_ready = mem_ready_q;
-    assign mem_rdata = mem_rdata_q;
+    // PEU slave
+    peu #(
+        .BASE_ADDR(32'h1000_0000)
+    ) u_peu (
+        .clk      (clk),
+        .rst_n    (rst_n),
+        .mem_valid(peu_valid),
+        .mem_instr(peu_instr),
+        .mem_ready(peu_ready),
+        .mem_addr (peu_addr),
+        .mem_wdata(peu_wdata),
+        .mem_wstrb(peu_wstrb),
+        .mem_rdata(peu_rdata)
+    );
 
 endmodule
