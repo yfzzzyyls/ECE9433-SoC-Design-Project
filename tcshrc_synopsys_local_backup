@@ -1,0 +1,21 @@
+setenv SNPSLMD_LICENSE_FILE 27020@pyke.poly.edu
+setenv LM_LICENSE_FILE 27020@pyke.poly.edu
+
+setenv VERDI_HOME /eda/synopsys/verdi/U-2023.03-SP2-5
+setenv VC_STATIC_HOME /eda/synopsys/vc_static/U-2023.03-SP2-5
+setenv CC_HOME /eda/synopsys/customcompiler/V-2023.12-SP1-3
+setenv HSP_HOME /eda/synopsys/hspice/V-2023.12-SP1-1
+setenv ICC_HOME /eda/synopsys/icc2/T-2022.03-SP2-1
+# setenv SYN_HOME /eda/synopsys/syn/U-2022.12-SP7-3
+setenv SYN_HOME /eda/synopsys/syn/W-2024.09-SP5-5
+setenv VCS_HOME /eda/synopsys/vcs/U-2023.03-SP2-5
+setenv PCM_STUDIO /eda/synopsys/pcm_studio/U-2023.06
+setenv PRIME /eda/synopsys/prime/T-2022.03-SP5-1
+setenv TXS /eda/synopsys/txs/U-2022.12-SP4
+setenv PSIM /eda/synopsys/primesim/U-2023.03-2
+setenv SENTAURUS /eda/synopsys/sentaurus/U-2022.12-SP1
+setenv LC_HOME /eda/synopsys/lc/W-2024.09
+setenv XA_HOME /eda/synopsys/xa/W-2024.09-SP1
+setenv PRIME_WAVE /eda/synopsys/primewave/V-2023.12-SP1-3
+setenv WV_HOME /eda/synopsys/wv/R-2020.12-4
+set path=($path $LC_HOME/bin $CC_HOME/bin $HSP_HOME/hspice/bin $VERDI_HOME/bin $VC_STATIC_HOME/bin $VCS_HOME/bin $ICC_HOME/bin $SYN_HOME/bin $PCM_STUDIO/bin $PRIME/bin $TXS/bin $PSIM/bin $SENTAURUS/bin $XA_HOME/bin $PRIME_WAVE/bin $WV_HOME/bin)
