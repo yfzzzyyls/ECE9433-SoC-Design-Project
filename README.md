@@ -77,3 +77,27 @@ vcs -full64 -kdb -sverilog \
 What to expect:
 - The simulator prints the firmware load message and halts when the firmware asserts `trap`. With `peu_test.hex` it reports `Firmware completed after 106 cycles. PASS`. If the firmware spins (any mismatch), the bench times out at 200 000 cycles and prints FAIL.
 - Point `HEX_PATH` in `sim/soc_top_tb.sv` to a different hex if you want to run other firmware images; the VCS flow stays the same.
+
+## Synthesis (Design Compiler) — Read RTL & Elaborate
+
+Use the tutorial flow but point to our sources:
+
+```tcl
+set_app_var sh_enable_page_mode false
+source tcl_scripts/setup.tcl                ;# stdcell + SRAM .db in target/link libs
+analyze -define SYNTHESIS -format sverilog {
+    ../rtl/soc_top.sv
+    ../rtl/interconnect.sv
+    ../rtl/sram.sv
+    ../rtl/peu.sv
+    ../third_party/picorv32/picorv32.v
+}
+elaborate soc_top
+current_design soc_top
+```
+
+Notes / pitfalls:
+- Define `SYNTHESIS` so sim-only constructs (`$readmemh`, initial blocks) are skipped during DC.
+- `rtl/sram.sv` maps to the TSMC16 macro `TS1N16ADFPCLLLVTA512X45M4SWSHOD` for synthesis; the behavioral RAM remains under `ifndef SYNTHESIS` for VCS.
+- The SRAM timing lib `N16ADFP_SRAM_tt0p8v0p8v25c_100a.db` is included via `setup.tcl` to avoid flop-based RAM inference.
+- Picorv32 emits many signed/unsigned and unreachable warnings in elaboration; they are expected and non-fatal.

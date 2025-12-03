@@ -1,0 +1,17 @@
+*.log
+third_party/
+tcl_scripts/*.log
+tcl_scripts/*.svf
+build/
+csrc/
+unmapped/
+default.svf
+ucli.key
+tcl_scripts/work/
+tcl_scripts/*.mr
+tcl_scripts/*.pvl
+tcl_scripts/*.syn
+tcl_scripts/.nfs*
+firmware/peu_test/peu_test.elf
+firmware/peu_test/peu_test.bin
+firmware/peu_test/peu_test.hex

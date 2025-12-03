@@ -14,7 +14,7 @@ peu_test.bin: peu_test.elf
 	chmod -x $@
 
 peu_test.hex: peu_test.bin
-	python3 ../../third_party/picorv32/firmware/makehex.py $< 32768 > $@
+	python3 ../../third_party/picorv32/firmware/makehex.py $< 512 > $@
 
 clean:
 	rm -f peu_test.elf peu_test.bin peu_test.hex

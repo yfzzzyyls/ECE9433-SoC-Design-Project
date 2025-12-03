@@ -1,6 +1,6 @@
 // Simple address decoder/mux for one master and two slaves (SRAM/PEU) using
 // the PicoRV32 native valid/ready interface.
-module interconnect #(
+module bus_interconnect #(
     parameter logic [31:0] SRAM_BASE = 32'h0000_0000,
     parameter logic [31:0] SRAM_MASK = 32'hF000_0000, // default: catch low region
     parameter logic [31:0] PEU_BASE  = 32'h1000_0000,

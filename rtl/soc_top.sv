@@ -1,7 +1,9 @@
 // Minimal SoC top: PicoRV32 core + behavioral SRAM preloaded from firmware hex.
 module soc_top #(
-    parameter int MEM_WORDS = 32'd32768,
-    parameter string HEX_PATH = "third_party/picorv32/firmware/firmware.hex"
+    parameter int MEM_WORDS = 32'd512
+`ifndef SYNTHESIS
+    , parameter string HEX_PATH = "third_party/picorv32/firmware/firmware.hex"
+`endif
 ) (
     input  logic clk,
     input  logic rst_n,
@@ -110,7 +112,7 @@ module soc_top #(
     );
 
     // Interconnect
-    interconnect u_ic (
+    bus_interconnect u_ic (
         .m_valid   (mem_valid),
         .m_instr   (mem_instr),
         .m_ready   (mem_ready),
@@ -136,8 +138,10 @@ module soc_top #(
 
     // SRAM slave
     sram #(
-        .MEM_WORDS(MEM_WORDS),
-        .HEX_PATH (HEX_PATH)
+        .MEM_WORDS(MEM_WORDS)
+    `ifndef SYNTHESIS
+        , .HEX_PATH (HEX_PATH)
+    `endif
     ) u_sram (
         .clk      (clk),
         .rst_n    (rst_n),
