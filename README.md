@@ -80,20 +80,25 @@ What to expect:
 
 ## Synthesis (Design Compiler) — Read RTL & Elaborate
 
-Use the tutorial flow but point to our sources:
+We now use DC NXT W-2024.09-SP5-5. The PDK as delivered lacks tech RC (TLU+) files and an SRAM NDM; topo runs will warn about missing RC per-layer attributes and mark SRAM macros `dont_use`. Per professor, this is OK for now—run a logical (non-topo) compile to get a mapped netlist. Representative topo log snippet (expected):
+- `Library analysis succeeded.`
+- `Warning: No TLUPlus file identified. (DCT-034)`
+- `Error: Layer 'M1' is missing the 'resistance' attribute. (PSYN-100)` … similar for M2–M11/AP
+- SRAM cells marked `dont_use` due to missing physical view.
+
+Recommended non-topo flow (fresh session):
 
 ```tcl
 set_app_var sh_enable_page_mode false
-source tcl_scripts/setup.tcl                ;# stdcell + SRAM .db in target/link libs
-analyze -define SYNTHESIS -format sverilog {
-    ../rtl/soc_top.sv
-    ../rtl/interconnect.sv
-    ../rtl/sram.sv
-    ../rtl/peu.sv
-    ../third_party/picorv32/picorv32.v
-}
+set_app_var alib_library_analysis_path /home/fy2243/ECE9433-SoC-Design-Project/alib
+source tcl_scripts/setup.tcl
+analyze -define SYNTHESIS -format sverilog {../rtl/soc_top.sv ../rtl/interconnect.sv ../rtl/sram.sv ../rtl/peu.sv ../third_party/picorv32/picorv32.v}
 elaborate soc_top
 current_design soc_top
+source /home/fy2243/ECE9433-SoC-Design-Project/tcl_scripts/soc_top.con
+compile_ultra
+write -hier -f ddc -output ../mapped/soc_top.ddc
+write -hier -f verilog -output ../mapped/soc_top.v
 ```
 
 Notes / pitfalls:
@@ -101,3 +106,29 @@ Notes / pitfalls:
 - `rtl/sram.sv` maps to the TSMC16 macro `TS1N16ADFPCLLLVTA512X45M4SWSHOD` for synthesis; the behavioral RAM remains under `ifndef SYNTHESIS` for VCS.
 - The SRAM timing lib `N16ADFP_SRAM_tt0p8v0p8v25c_100a.db` is included via `setup.tcl` to avoid flop-based RAM inference.
 - Picorv32 emits many signed/unsigned and unreachable warnings in elaboration; they are expected and non-fatal.
+- Topo mode will halt without tech RC and SRAM physical views; stick to non-topo until/unless tech/TLU+ and SRAM NDM are provided.
+
+## Innovus Bring-Up (batch, legacy mode)
+
+Prereqs: mapped netlist at `mapped/soc_top.v`, SDC at `tcl_scripts/soc_top.sdc`, and PDK collateral at `/ip/tsmc/tsmc16adfp/...` as referenced in the Tcl scripts.
+
+Run:
+```bash
+cd /home/fy2243/ECE9433-SoC-Design-Project
+export PATH=/eda/cadence/INNOVUS211/bin:$PATH   # tcsh: set path = (/eda/cadence/INNOVUS211/bin $path)
+innovus -no_gui -overwrite -files tcl_scripts/innovus_flow.tcl
+```
+What happens:
+- Uses legacy init with `init_mmmc_file=tcl_scripts/innovus_mmmc_legacy.tcl` so timing is active at `init_design`.
+- Reads tech/stdcell/SRAM LEF, mapped netlist, applies SDC, creates a 60% util floorplan, places/fixes the SRAM, runs `timeDesign -prePlace`.
+- Checkpoints are written to `pd/innovus/init.enc` and `pd/innovus/init_timed.enc`; timing reports drop into `timingReports/`.
+
+If you want to restore the timed checkpoint in a GUI session:
+```bash
+cd /home/fy2243/ECE9433-SoC-Design-Project
+export PATH=/eda/cadence/INNOVUS211/bin:$PATH
+innovus -common_ui
+# at the Innovus prompt:
+restoreDesign pd/innovus/init_timed.enc
+gui_fit
+```
