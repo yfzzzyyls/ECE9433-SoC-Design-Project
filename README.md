@@ -132,3 +132,24 @@ innovus -common_ui
 restoreDesign pd/innovus/init_timed.enc
 gui_fit
 ```
+
+## Innovus DRC-Clean Flow (headless, 0 violations)
+
+For a reproducible DRC-clean run (30% util, generous margins, DRC-priority routing):
+
+```bash
+cd /home/fy2243/ECE9433-SoC-Design-Project
+export PATH=/eda/cadence/INNOVUS211/bin:$PATH
+innovus -no_gui -overwrite -files tcl_scripts/ultra_drc_clean.tcl
+```
+
+What this does:
+- Initializes with timing (legacy init) and creates a 30% utilization floorplan with 50 µm margins; places/fixes the SRAM.
+- Runs placement, CTS (with slew warnings but OK for this flow), detailed routing with DRC-focused settings.
+- Adds metal fill on M1–M6, runs `verify_drc`, then `ecoRoute -fix_drc` and a final `verify_drc`.
+- Outputs DRC reports: `pd/innovus/drc_ultra_1.rpt` (initial, may show span-length M4 markers) and `pd/innovus/drc_ultra_2.rpt` (“No DRC violations were found”).
+- Final checkpoint: `pd/innovus/ultra_final.enc` (+ `.enc.dat`) is DRC clean.
+
+Notes:
+- This flow uses LEF-based RC (no external TLU+/QRC required for this class project).
+- To rerun just the DRC/ECO on the routed DB, see `ultra_drc_check.tcl`; otherwise prefer the one-shot `ultra_drc_clean.tcl` above.
