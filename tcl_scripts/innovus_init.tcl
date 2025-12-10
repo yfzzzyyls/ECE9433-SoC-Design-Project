@@ -33,7 +33,9 @@ set init_mmmc_file  $MMMC_LEGACY_FILE
 init_design
 
 # Create floorplan - floorPlan command IS available in legacy batch mode
-floorPlan -site core -r 1.0 0.60 20 20 20 20
+# Ultra-low utilization (30%) for maximum DRC cleanness - course project setting
+# Maximum routing space to eliminate short wire segments
+floorPlan -site core -r 1.0 0.30 50 50 50 50
 
 # Place and fix the SRAM macro; adjust coordinates/orientation to taste.
 set sram_inst [get_db insts u_sram/u_sram_macro]

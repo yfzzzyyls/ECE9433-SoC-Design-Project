@@ -9,8 +9,27 @@ set proj_root  [file normalize [file join $script_dir ..]]
 # MMMC timing views are already loaded during init_design via init_mmmc_file
 source [file join $script_dir innovus_init.tcl]
 
+# Use low-effort RC extraction (no tech file required)
+setExtractRCMode -engine preRoute -effortLevel low
+
 # Quick timing update (no placement yet)
 timeDesign -prePlace
 
 # Save a timed checkpoint
 saveDesign [file join $proj_root pd innovus/init_timed.enc]
+
+# ===== PLACEMENT =====
+place_design
+optDesign -preCTS
+timeDesign -preCTS
+
+# ===== CLOCK TREE SYNTHESIS =====
+create_ccopt_clock_tree_spec
+ccopt_design
+
+# ===== POST-CTS OPTIMIZATION =====
+optDesign -postCTS
+timeDesign -postCTS
+
+# Save post-CTS checkpoint
+saveDesign [file join $proj_root pd innovus/post_cts.enc]

@@ -2,16 +2,28 @@
 create_clock -name clk -period 10 [get_ports clk]
 set_clock_uncertainty 0.1 [get_clocks clk]
 
-# Inputs except the clock itself
-set in_ports [remove_from_collection [all_inputs] [get_ports clk]]
-set_input_delay 1 -clock clk $in_ports
-set_driving_cell -lib_cell INVX1 $in_ports
+# Inputs except the clock itself and async reset
+set in_ports [remove_from_collection [all_inputs] [get_ports {clk rst_n}]]
+if {[sizeof_collection $in_ports] > 0} {
+    set_input_delay 1 -clock clk $in_ports
+    # Model a modest drive strength using a real inverter from the stdcell lib.
+    set_driving_cell -lib_cell INVD1BWP16P90 $in_ports
+}
 
 set_output_delay 1 -clock clk [all_outputs]
 set_load 0.05 [all_outputs]
 
 # Don’t time through async reset
 set_false_path -through [get_ports rst_n]
+
+# Let DC fix hold (min) violations by padding short paths
+set_fix_hold [all_clocks]
+
+# Add margin on SRAM macro inputs to cover hold checks in non-topo
+set sram_pins [get_pins -hier -filter {full_name =~ "*u_sram/u_sram_macro/D*" || full_name =~ "*u_sram/u_sram_macro/BWEB*"}]
+if {[sizeof_collection $sram_pins] > 0} {
+    set_fix_hold -from [all_clocks] -to $sram_pins
+}
 
 
 

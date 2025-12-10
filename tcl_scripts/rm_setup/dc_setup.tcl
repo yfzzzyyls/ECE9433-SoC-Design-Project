@@ -18,7 +18,10 @@ if {![file isdirectory $NDM_DESIGN_LIB]} {
     $NDM_DESIGN_LIB
 }
 
-open_lib $NDM_DESIGN_LIB
+# Only available in topo; guard for non-topo runs.
+if {[info commands open_lib] != ""} {
+  open_lib $NDM_DESIGN_LIB
+}
 
 
 # set_tlu_plus_files \
