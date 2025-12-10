@@ -48,8 +48,8 @@ module bus_interconnect #(
     assign peu_valid  = m_valid & hit_peu;
     assign peu_instr  = m_instr;
     assign peu_addr   = m_addr;
-    assign peu_wdata  = m_wdata;
-    assign peu_wstrb  = m_wstrb;
+    assign peu_wdata  = hit_peu ? m_wdata : 32'd0;
+    assign peu_wstrb  = hit_peu ? m_wstrb : 4'b0;
 
     // Merge responses (priority: SRAM > PEU; unmatched returns ready=1 with zero data)
     always @(*) begin

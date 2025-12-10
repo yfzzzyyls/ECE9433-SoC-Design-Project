@@ -15,3 +15,6 @@ tcl_scripts/.nfs*
 firmware/peu_test/peu_test.elf
 firmware/peu_test/peu_test.bin
 firmware/peu_test/peu_test.hex
+
+*.vcd
+*.txt
