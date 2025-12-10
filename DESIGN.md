@@ -431,3 +431,51 @@ Successfully achieved **0 DRC violations** using a 30% core utilization configur
 **Final status:** The flow above reproduces 0 DRC violations on Innovus 21.18. No external tech RC files are required for this classroom flow; LEF-based extraction and routing are sufficient for the clean result.
 
 The combination of ultra-low utilization, generous margins, DRC-focused routing modes, and ECO fixing proved effective for achieving DRC cleanness in an educational/course project setting.
+
+### Dec 9, 2025 — Tech-Aware RTL→GDS Flow (STARRC + QRC, 0 DRC)
+
+**Problem:** We initially assumed tech RC files were missing, so timing/RC were LEF-only. After confirming the tech files under `/ip/tsmc/tsmc16adfp/tech/`, we needed a tech-aware flow (STARRC in synthesis, QRC in P&R) and to prove it still finishes DRC-clean.
+
+**Solution:** Two-stage flow with full tech collateral:
+1) DC synthesis with STARRC tech (`syn_complete_with_tech.tcl`)
+2) Innovus P&R with QRC tech (`tcl_scripts/complete_flow_with_qrc.tcl`)
+Result: DRC clean (0 violations) with field-solver-quality parasitics.
+
+**From-scratch commands (headless, tech-aware, reproducible 0-DRC):**
+
+1) Synthesis (DC NXT, parasitic-aware with STARRC)
+```bash
+cd /home/fy2243/ECE9433-SoC-Design-Project
+dc_shell -f syn_complete_with_tech.tcl 2>&1 | tee synthesis_complete.log
+```
+What it does:
+- Uses STARRC tech file `/ip/tsmc/tsmc16adfp/tech/RC/N16ADFP_STARRC/N16ADFP_STARRC_worst.nxtgrd`
+- Reads RTL (`rtl/soc_top.sv`, `rtl/sram.sv`, `rtl/peu.sv`, `rtl/interconnect.sv`, `third_party/picorv32/picorv32.v`)
+- Links stdcell/SRAM .db, applies `tcl_scripts/soc_top.con`, runs `compile_ultra`
+- Outputs to `mapped_with_tech/`: `soc_top.v`, `soc_top.ddc`, `soc_top.sdc`, `area.rpt`, `timing.rpt`, `power.rpt`, `qor.rpt`
+
+2) Place & Route (Innovus with QRC extraction)
+```bash
+cd /home/fy2243/ECE9433-SoC-Design-Project
+/eda/cadence/INNOVUS211/bin/innovus -no_gui -overwrite -files tcl_scripts/complete_flow_with_qrc.tcl 2>&1 | tee complete_flow.log
+```
+What it does (all driven by `complete_flow_with_qrc.tcl`):
+- Loads QRC tech `/ip/tsmc/tsmc16adfp/tech/RC/N16ADFP_QRC/worst/qrcTechFile` via `tcl_scripts/innovus_mmmc_legacy_qrc.tcl`
+- Reads tech/stdcell/SRAM LEFs and netlist `mapped_with_tech/soc_top.v`
+- Floorplan: 30% util, 50 µm margins; SRAM placed/fixed
+- PG connects; process set to 16nm
+- Placement → CTS (`ccopt_design -cts`) → detailed route (DRC-focused) → metal fill (M1–M6)
+- DRC #1: `pd/innovus/drc_complete_1.rpt` (saw 3 markers)
+- ECO fix: `ecoRoute -fix_drc`
+- DRC #2: `pd/innovus/drc_complete_2.rpt` (“No DRC violations were found”)
+- Checkpoints: `pd/innovus/complete_place.enc`, `complete_cts.enc`, `complete_route.enc`, `complete_final.enc`
+
+**Key outputs to verify:**
+- `mapped_with_tech/soc_top.v` — synthesized netlist used for P&R
+- `pd/innovus/drc_complete_2.rpt` — should state “No DRC violations were found”
+- `pd/innovus/complete_final.enc` — final DRC-clean checkpoint
+
+**Notes for new users:**
+- Keep PATH to Innovus: `export PATH=/eda/cadence/INNOVUS211/bin:$PATH`
+- Antenna warnings on SRAM pins (IMPLF-200/201) are expected; QRC still loads/extracts.
+- Routing is DRC-priority (timing-driven off). Enable timing-driven options only after DRC is stable if tighter timing is needed.

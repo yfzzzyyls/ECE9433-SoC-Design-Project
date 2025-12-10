@@ -133,23 +133,34 @@ restoreDesign pd/innovus/init_timed.enc
 gui_fit
 ```
 
-## Innovus DRC-Clean Flow (headless, 0 violations)
+## Tech-Aware DRC-Clean Flow (Unified, STARRC + QRC, 0 violations)
 
-For a reproducible DRC-clean run (30% util, generous margins, DRC-priority routing):
+This is the single, recommended flow (parasitic-aware synthesis + QRC P&R).
 
+1) Synthesis with STARRC tech
 ```bash
 cd /home/fy2243/ECE9433-SoC-Design-Project
-export PATH=/eda/cadence/INNOVUS211/bin:$PATH
-innovus -no_gui -overwrite -files tcl_scripts/ultra_drc_clean.tcl
+dc_shell -f syn_complete_with_tech.tcl 2>&1 | tee synthesis_complete.log
 ```
+Outputs (in `mapped_with_tech/`): `soc_top.v`, `soc_top.ddc`, `soc_top.sdc`, `area.rpt`, `timing.rpt`, `power.rpt`, `qor.rpt`.
 
-What this does:
-- Initializes with timing (legacy init) and creates a 30% utilization floorplan with 50 µm margins; places/fixes the SRAM.
-- Runs placement, CTS (with slew warnings but OK for this flow), detailed routing with DRC-focused settings.
-- Adds metal fill on M1–M6, runs `verify_drc`, then `ecoRoute -fix_drc` and a final `verify_drc`.
-- Outputs DRC reports: `pd/innovus/drc_ultra_1.rpt` (initial, may show span-length M4 markers) and `pd/innovus/drc_ultra_2.rpt` (“No DRC violations were found”).
-- Final checkpoint: `pd/innovus/ultra_final.enc` (+ `.enc.dat`) is DRC clean.
+2) Innovus P&R with QRC tech (DRC-priority)
+```bash
+cd /home/fy2243/ECE9433-SoC-Design-Project
+export PATH=/eda/cadence/INNOVUS211/bin:$PATH   # tcsh: set path = (/eda/cadence/INNOVUS211/bin $path)
+/eda/cadence/INNOVUS211/bin/innovus -no_gui -overwrite -files tcl_scripts/complete_flow_with_qrc.tcl 2>&1 | tee complete_flow.log
+```
+What it does:
+- Loads QRC tech `/ip/tsmc/tsmc16adfp/tech/RC/N16ADFP_QRC/worst/qrcTechFile` (via `tcl_scripts/innovus_mmmc_legacy_qrc.tcl`)
+- Reads tech/stdcell/SRAM LEFs and the synthesized netlist `mapped_with_tech/soc_top.v`
+- Floorplan: 30% utilization, 50 µm margins; SRAM placed/fixed; PG connects; process set to 16nm
+- Placement → CTS (`ccopt_design -cts`) → DRC-focused routing → metal fill (M1–M6)
+- DRC #1: `pd/innovus/drc_complete_1.rpt` (initial markers)
+- ECO fix: `ecoRoute -fix_drc`
+- DRC #2: `pd/innovus/drc_complete_2.rpt` (“No DRC violations were found”)
+- Final checkpoint: `pd/innovus/complete_final.enc`
 
 Notes:
-- This flow uses LEF-based RC (no external TLU+/QRC required for this class project).
-- To rerun just the DRC/ECO on the routed DB, see `ultra_drc_check.tcl`; otherwise prefer the one-shot `ultra_drc_clean.tcl` above.
+- Keep PATH set to Innovus before running.
+- Antenna warnings on the SRAM LEF are expected; QRC still loads and extraction runs.
+- Routing is DRC-priority (timing-driven off). Enable timing-driven options later only if you need tighter timing after DRC is clean.
