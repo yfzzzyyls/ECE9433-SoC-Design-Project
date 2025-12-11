@@ -1,6 +1,6 @@
 // Minimal SoC top: PicoRV32 core + behavioral SRAM preloaded from firmware hex.
 module soc_top #(
-    parameter int MEM_WORDS = 32'd8192
+    parameter int MEM_WORDS = 32'd512
 `ifndef SYNTHESIS
     , parameter string HEX_PATH = "firmware/peu_test/peu_test.hex"
 `endif
