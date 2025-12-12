@@ -17,7 +17,9 @@ set clock_period 10.0
 set rtl_files [list \
     "$proj_root/rtl/soc_top.sv" \
     "$proj_root/rtl/sram.sv" \
-    "$proj_root/rtl/peu.sv" \
+    "$proj_root/rtl/cordic_core_atan2.sv" \
+    "$proj_root/rtl/cordic_core_sincos.sv" \
+    "$proj_root/rtl/cordic_soc_wrapper.sv" \
     "$proj_root/rtl/interconnect.sv" \
     "$proj_root/third_party/picorv32/picorv32.v" \
 ]
@@ -43,10 +45,10 @@ foreach f $rtl_files {
 }
 puts ""
 
-# Setup libraries
-set target_library [list $std_db $sram_db]
-set link_library [concat "* " $target_library]
-set synthetic_library "dw_foundation.sldb"
+# Setup libraries (explicit set_app_var to ensure mapping)
+set_app_var target_library       [list $std_db $sram_db]
+set_app_var synthetic_library    "dw_foundation.sldb"
+set_app_var link_library         [concat "* " $std_db $sram_db $synthetic_library]
 
 set_app_var search_path [list $proj_root/rtl $proj_root/third_party/picorv32]
 
