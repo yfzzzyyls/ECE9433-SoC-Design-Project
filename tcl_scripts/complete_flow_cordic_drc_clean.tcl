@@ -127,8 +127,9 @@ setNanoRouteMode -routeWithTimingDriven false
 
 # DRC-friendly settings
 setNanoRouteMode -drouteFixAntenna true
+# Allow routing up to M10 to relieve congestion
 setNanoRouteMode -routeBottomRoutingLayer 1
-setNanoRouteMode -routeTopRoutingLayer 8
+setNanoRouteMode -routeTopRoutingLayer 10
 
 # Aggressive DRC settings
 setNanoRouteMode -drouteAutoStop false
@@ -136,6 +137,14 @@ setNanoRouteMode -drouteExpAdvancedMarFix true
 setNanoRouteMode -drouteEndIteration 20
 
 puts "Routing settings configured for DRC priority"
+
+# Connect PG ring to stdcell rails (core pins) using M2-M10
+puts "\n=========================================="
+puts "===== POWER CONNECTION: sroute corePin ====="
+puts "==========================================\n"
+sroute -nets {VDD VSS} -connect corePin \
+  -layerChangeRange {M2 M10} \
+  -allowLayerChange 1
 
 puts "\n=========================================="
 puts "===== PLACEMENT ====="

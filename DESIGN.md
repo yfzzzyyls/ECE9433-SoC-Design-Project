@@ -1007,3 +1007,18 @@ createRouteBlk -layer M2 -box $block_llx $block_lly $block_urx $block_ury -excep
   - Verification: `rg "GTECH|SEQGEN" mapped_with_tech/soc_top.v` → no hits (fully mapped netlist)
   
 Next: proceed to Phase 1 P&R (15% util, M2-only halo, M9/M10 ring-only, no sroute/fill) using this regenerated netlist.
+
+#### P&R Phase 2 (Dec 12, 2025 — Ring + PG sroute, current status)
+- Script: `tcl_scripts/complete_flow_cordic_drc_clean.tcl` (15% util, M2-only halo, M9/M10 ring, PG sroute corePin M2–M10).
+- Run command:
+  ```bash
+  cd /home/fy2243/ECE9433-SoC-Design-Project
+  /eda/cadence/INNOVUS211/bin/innovus -no_gui -overwrite -files tcl_scripts/complete_flow_cordic_drc_clean.tcl 2>&1 | tee pd/innovus/run_phase2_sroute.log
+  ```
+- Result (current): DRC 44 violations, LVS 1 special-net error, STA incomplete. Checkpoint saved: `pd/innovus/cordic_phase1_final.enc`. DRC reports: `pd/innovus/drc_cordic_iter*.rpt`. LVS report: `pd/innovus/lvs_connectivity_special.rpt`.
+- Next steps planned:
+  1. Confirm PG sroute executed (see log for `sroute -nets {VDD VSS} -connect corePin ...`).
+  2. Inspect latest DRC report to locate the 44 markers (likely M2 shorts/spacing).
+  3. Inspect `lvs_connectivity_special.rpt` to identify the remaining VDD/VSS disconnect; add a manual tie if needed.
+  4. Optionally relax M2 halo or allow limited M1 near SRAM if congestion persists.
+  5. Rerun routing/DRC/LVS from the saved checkpoint to save time (`restoreDesign pd/innovus/cordic_phase1_final.enc`).
