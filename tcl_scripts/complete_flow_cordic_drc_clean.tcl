@@ -7,13 +7,14 @@ set script_dir [file dirname [file normalize [info script]]]
 set proj_root  [file normalize [file join $script_dir ..]]
 
 puts "\n=========================================="
-puts "PHASE 1: Ring Only Power Grid"
+puts "PHASE: Ring + Sparse Stripes Power Grid"
 puts "=========================================="
 puts "Configuration:"
 puts "  - Utilization: 15%"
 puts "  - SRAM halo: M2-only (M1 open for power)"
-puts "  - Power: M9/M10 ring only"
-puts "  - No sroute, no stripes, no fill"
+puts "  - Power: M9/M10 ring + sparse PG stripes"
+puts "  - sroute: corePin + blockPin, M2-M10"
+puts "  - No fill"
 puts "==========================================\n"
 
 # Library and design inputs
@@ -59,7 +60,7 @@ if { [llength $sram_inst] > 0 } {
   puts "SRAM macro placed at ($sram_x, $sram_y) - center-bottom"
 
   # M2-ONLY halo around SRAM (leave M1 open for power rails)
-  set halo 15.0
+  set halo 10.0
 
   # Get bbox as string and split into list - handle Innovus bbox format
   set sram_bbox_str [get_db $sram_inst .bbox]
@@ -108,6 +109,38 @@ addRing -nets {VDD VSS} \
 puts "Power ring added: M9 vertical, M10 horizontal"
 puts "Width: 4.0um, Spacing: 3.5um, Offset: 15um from core"
 
+# Add sparse PG stripes to tie ring into core rails (coarse pitch)
+puts "Adding sparse PG stripes (M9 vertical, M8 horizontal)..."
+# Get bbox for stripe count (normalize to flat list)
+set die_bbox_str [get_db designs .bbox]
+set die_bbox_list [split [string trim $die_bbox_str "{}"] " "]
+set llx [expr {double([lindex $die_bbox_list 0])}]
+set lly [expr {double([lindex $die_bbox_list 1])}]
+set urx [expr {double([lindex $die_bbox_list 2])}]
+set ury [expr {double([lindex $die_bbox_list 3])}]
+set die_w [expr {$urx - $llx}]
+set die_h [expr {$ury - $lly}]
+
+# Vertical stripes on M9
+set v_pitch 100.0
+set v_sets [expr {int($die_w / $v_pitch) + 1}]
+catch {
+  addStripe -nets {VDD VSS} -layer M9 -direction vertical \
+    -width 2.0 -spacing 2.0 -set_to_set_distance $v_pitch \
+    -start_offset [expr {$llx + 20.0}] -number_of_sets $v_sets
+  puts "M9 vertical stripes: $v_sets sets @ ${v_pitch}um pitch"
+}
+
+# Horizontal stripes on M8
+set h_pitch 100.0
+set h_sets [expr {int($die_h / $h_pitch) + 1}]
+catch {
+  addStripe -nets {VDD VSS} -layer M8 -direction horizontal \
+    -width 2.0 -spacing 2.0 -set_to_set_distance $h_pitch \
+    -start_offset [expr {$lly + 20.0}] -number_of_sets $h_sets
+  puts "M8 horizontal stripes: $h_sets sets @ ${h_pitch}um pitch"
+}
+
 # Save checkpoint after ring
 saveDesign [file join $proj_root pd/innovus/cordic_ring_only.enc]
 
@@ -140,9 +173,9 @@ puts "Routing settings configured for DRC priority"
 
 # Connect PG ring to stdcell rails (core pins) using M2-M10
 puts "\n=========================================="
-puts "===== POWER CONNECTION: sroute corePin ====="
+puts "===== POWER CONNECTION: sroute corePin + blockPin (SRAM) ====="
 puts "==========================================\n"
-sroute -nets {VDD VSS} -connect corePin \
+sroute -nets {VDD VSS} -connect {corePin blockPin} \
   -layerChangeRange {M2 M10} \
   -allowLayerChange 1
 
