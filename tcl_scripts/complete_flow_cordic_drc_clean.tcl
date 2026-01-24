@@ -1,18 +1,17 @@
-# Complete P&R Flow - Phase 1: Ring Only
+# Complete P&R Flow - Ring + Stripes PG
 # Phased Power Grid Implementation for CORDIC SoC
-# Phase 1: M9/M10 Ring ONLY (no sroute, no stripes, no fill)
 # 15% utilization, M2-only halo around SRAM
 
 set script_dir [file dirname [file normalize [info script]]]
 set proj_root  [file normalize [file join $script_dir ..]]
 
 puts "\n=========================================="
-puts "PHASE: Ring + Sparse Stripes Power Grid"
+puts "PHASE: Ring + Stripes Power Grid"
 puts "=========================================="
 puts "Configuration:"
 puts "  - Utilization: 15%"
 puts "  - SRAM halo: M2-only (M1 open for power)"
-puts "  - Power: M9/M10 ring + sparse PG stripes"
+puts "  - Power: M9/M10 ring + PG stripes"
 puts "  - sroute: corePin + blockPin, M2-M10"
 puts "  - No fill"
 puts "==========================================\n"
@@ -94,7 +93,7 @@ globalNetConnect VDD -type tiehi -all -override
 globalNetConnect VSS -type tielo -all -override
 
 puts "\n=========================================="
-puts "===== PHASE 1: M9/M10 POWER RING ====="
+puts "===== PG: M9/M10 RING + M8/M9 STRIPES ====="
 puts "==========================================\n"
 
 # Add M9/M10 power ring around core (15um inset from edges)
@@ -109,8 +108,8 @@ addRing -nets {VDD VSS} \
 puts "Power ring added: M9 vertical, M10 horizontal"
 puts "Width: 4.0um, Spacing: 3.5um, Offset: 15um from core"
 
-# Add sparse PG stripes to tie ring into core rails (coarse pitch)
-puts "Adding sparse PG stripes (M9 vertical, M8 horizontal)..."
+# Add PG stripes to tie ring into core rails (coarse but contiguous)
+puts "Adding PG stripes (M9 vertical, M8 horizontal)..."
 # Get bbox for stripe count (normalize to flat list)
 set die_bbox_str [get_db designs .bbox]
 set die_bbox_list [split [string trim $die_bbox_str "{}"] " "]
@@ -121,22 +120,22 @@ set ury [expr {double([lindex $die_bbox_list 3])}]
 set die_w [expr {$urx - $llx}]
 set die_h [expr {$ury - $lly}]
 
-# Vertical stripes on M9
-set v_pitch 100.0
+# Vertical stripes on M9 (coarse pitch, overlap ring)
+set v_pitch 80.0
 set v_sets [expr {int($die_w / $v_pitch) + 1}]
 catch {
   addStripe -nets {VDD VSS} -layer M9 -direction vertical \
-    -width 2.0 -spacing 2.0 -set_to_set_distance $v_pitch \
+    -width 3.0 -spacing 3.0 -set_to_set_distance $v_pitch \
     -start_offset [expr {$llx + 20.0}] -number_of_sets $v_sets
   puts "M9 vertical stripes: $v_sets sets @ ${v_pitch}um pitch"
 }
 
-# Horizontal stripes on M8
-set h_pitch 100.0
+# Horizontal stripes on M8 (coarse pitch, overlap ring)
+set h_pitch 80.0
 set h_sets [expr {int($die_h / $h_pitch) + 1}]
 catch {
   addStripe -nets {VDD VSS} -layer M8 -direction horizontal \
-    -width 2.0 -spacing 2.0 -set_to_set_distance $h_pitch \
+    -width 3.0 -spacing 3.0 -set_to_set_distance $h_pitch \
     -start_offset [expr {$lly + 20.0}] -number_of_sets $h_sets
   puts "M8 horizontal stripes: $h_sets sets @ ${h_pitch}um pitch"
 }
